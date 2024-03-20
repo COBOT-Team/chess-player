@@ -7,15 +7,35 @@ endif()
 
 # find dependencies
 find_package(ament_cmake REQUIRED)
-# uncomment the following section in order to fill in
-# further dependencies manually.
-# find_package(<dependency> REQUIRED)
+find_package(generate_parameter_library REQUIRED)
+find_package(moveit_ros_planning_interface REQUIRED)
+find_package(chess_msgs REQUIRED)
+find_package(sensor_msgs REQUIRED)
+find_package(pcl_ros REQUIRED)
+find_package(pcl_conversions REQUIRED)
 
-add_executable(chess_player src/chess_player.cpp)
+generate_parameter_library(
+  chess_player_params
+  src/parameters.yaml
+)
+
+add_executable(chess_player src/main.cpp src/chess_player_node.cpp)
 target_include_directories(chess_player PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
 target_compile_features(chess_player PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
+
+ament_target_dependencies(chess_player PUBLIC
+  moveit_ros_planning_interface
+  chess_msgs
+  sensor_msgs
+  pcl_ros
+  pcl_conversions
+)
+
+target_link_libraries(chess_player PRIVATE
+  chess_player_params
+)
 
 install(TARGETS chess_player
   DESTINATION lib/${PROJECT_NAME})

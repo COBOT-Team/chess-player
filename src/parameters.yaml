@@ -1,0 +1,91 @@
+chess_player_params:
+  cobot_color:
+    {
+      type: string,
+      default_value: "white",
+      description: "The color that the COBOT is playing as. Either 'white' or 'black'.",
+      validation: { one_of<>: [["white", "black"]] },
+    }
+
+  cobot_move_group:
+    {
+      type: string,
+      default_value: "cobot0",
+      description: "The name of the move group to use for the COBOT arm.",
+    }
+
+  gripper_move_group:
+    {
+      type: string,
+      default_value: "cobot0_gripper",
+      description: "The name of the move group to use for the end effector.",
+    }
+
+  cobot_base_frame:
+    {
+      type: string,
+      default_value: "cobot0_base_link",
+      description: "The TF2 frame_id of the COBOT base.",
+    }
+
+  cobot_gripper_frame:
+    {
+      type: string,
+      default_value: "cobot0_link_gripper",
+      description: "The TF2 frame_id of the COBOT end effector.",
+    }
+
+  chessboard_frame:
+    {
+      type: string,
+      default_value: "chessboard_frame",
+      description: "The TF2 frame_id of the chessboard.",
+    }
+
+  move_select_action:
+    {
+      type: string,
+      default_value: "/chess/find_best_move",
+      description: "The action to call to find the best move.",
+    }
+
+  sub_topics:
+    tof_points:
+      {
+        type: string,
+        default_value: "tof/pieces/points",
+        description:
+          "The topic to subscribe to for the TOF's points. Each point represents a chess piece.",
+      }
+    game_state:
+      {
+        type: string,
+        default_value: "/chess/game_state",
+        description: "The topic that the game state is published to.",
+      }
+    time:
+      {
+        type: string,
+        default_value: "/chess/time",
+        description: "The topic that the game time is published to.",
+      }
+    enabled:
+      {
+        type: string,
+        default_value: "enabled",
+        description: "Topic that determines whether this COBOT is enabled.",
+      }
+    max_speed:
+      {
+        type: string,
+        default_value: "max_speed",
+        description: "Topic that determines the max speed of the COBOT.",
+      }
+
+  pub_topics:
+    state:
+      {
+        type: string,
+        default_value: "state",
+        description: "The topic to publish the state of the COBOT to.",
+      }
