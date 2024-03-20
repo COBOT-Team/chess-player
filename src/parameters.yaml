@@ -49,6 +49,13 @@ chess_player_params:
       description: "The action to call to find the best move.",
     }
 
+  chessboard_square_size:
+    {
+      type: double,
+      default_value: 0.035,
+      description: "The size of each square on the chessboard in meters.",
+    }
+
   sub_topics:
     tof_points:
       {

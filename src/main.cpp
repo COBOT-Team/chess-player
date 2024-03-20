@@ -2,20 +2,12 @@
 #include <rclcpp/rclcpp.hpp>
 
 #include "chess_player/chess_player_node.hpp"
+#include "chess_player/result.hpp"
 
 using namespace std;
 using chess_msgs::action::FindBestMove;
 using libchess::Side;
 using namespace std::chrono_literals;
-
-/**
- * The result of an operation.
- */
-enum class Result {
-  OK,         // The operation was successful.
-  ERR_RETRY,  // The operation failed, but can be retried.
-  ERR_FATAL,  // The operation failed and cannot be retried.
-};
 
 /**
  * Spin the node for a given duration. This function will always wait at least the given duration,
@@ -24,7 +16,7 @@ enum class Result {
  * @param[in] node The node to spin.
  * @param[in] duration The duration to spin for.
  */
-void spin_for(rclcpp::Node::SharedPtr node, chrono::milliseconds duration)
+void spin_for(rclcpp::Node::SharedPtr node, const chrono::milliseconds duration)
 {
   const auto start = chrono::steady_clock::now();
   while (chrono::steady_clock::now() - start < duration) {
@@ -113,6 +105,34 @@ Result find_best_move(ChessPlayerNode& chess_player)
 }
 
 /**
+ * Capture a piece at a given square. This will pick up the piece at the given square and remove it
+ * from the board.
+ *
+ * @param[in] chess_player The chess player node wrapper.
+ * @param[in] square The square to capture a piece at.
+ * @return The result of the operation.
+ */
+Result capture_at(ChessPlayerNode& chess_player, const libchess::Square& square)
+{
+  // TODO: Implement this function.
+  return Result::OK;
+}
+
+/**
+ * Move a piece from one square to another. This will move the piece from the first square to the
+ * second square.
+ *
+ * @param[in] chess_player The chess player node wrapper.
+ * @param[in] move The move to make.
+ * @return The result of the operation.
+ */
+Result move_piece(ChessPlayerNode& chess_player, const libchess::Move& move)
+{
+  // TODO: Implement this function.
+  return Result::OK;
+}
+
+/**
  * This function is run in a loop, forever (until the node exits). It spins the node until a turn
  * should be made, then makes the turn.
  *
@@ -150,7 +170,70 @@ bool loop_fn(ChessPlayerNode& chess_player)
   }
   chess_player.set_state(ChessPlayerNode::State::FOUND_OPTIMAL_MOVE);
 
-  // TODO: Interpret move and make it.
+  // Parse the move.
+  if (chess_player.best_move.draw) {
+    RCLCPP_INFO(chess_player.get_logger(), "Draw, not making a move");
+    return true;
+  }
+  if (chess_player.best_move.resign) {
+    RCLCPP_INFO(chess_player.get_logger(), "Resign, not making a move");
+    return true;
+  }
+  if (chess_player.best_move.move.empty()) {
+    RCLCPP_WARN(chess_player.get_logger(), "No move found, not making a move");
+    return true;
+  }
+  libchess::Move move;
+  try {
+    move = chess_player.get_position().parse_move(chess_player.best_move.move);
+  } catch (const exception* e) {
+    RCLCPP_ERROR(chess_player.get_logger(), "Cannot parse chess move, not making a move");
+    return true;
+  }
+
+  // If we need to capture a piece, do so.
+  if (move.is_capturing()) {
+    chess_player.set_state(ChessPlayerNode::State::TAKING_PIECE);
+    while (1) {
+      const auto result = capture_at(chess_player, move.to());
+      switch (result) {
+        case Result::OK:
+          break;
+        case Result::ERR_RETRY:
+          RCLCPP_WARN(chess_player.get_logger(), "Failed to capture piece, retrying in 100ms");
+          spin_for(chess_player.node, 100ms);
+          continue;
+        case Result::ERR_FATAL:
+          RCLCPP_ERROR(chess_player.get_logger(), "Failed to capture piece, exiting");
+          return false;
+      }
+    }
+  }
+
+  // Move the piece.
+  chess_player.set_state(ChessPlayerNode::State::MOVING_PIECE);
+  while (1) {
+    const auto result = move_piece(chess_player, move);
+    switch (result) {
+      case Result::OK:
+        break;
+      case Result::ERR_RETRY:
+        RCLCPP_WARN(chess_player.get_logger(), "Failed to move piece, retrying in 100ms");
+        spin_for(chess_player.node, 100ms);
+        continue;
+      case Result::ERR_FATAL:
+        RCLCPP_ERROR(chess_player.get_logger(), "Failed to move piece, exiting");
+        return false;
+    }
+  }
+
+  // Hit the clock.
+  chess_player.set_state(ChessPlayerNode::State::HITTING_CLOCK);
+  // TODO: Implement this.
+
+  // Move to home.
+  chess_player.set_state(ChessPlayerNode::State::MOVING_TO_HOME);
+  // TODO: Implement this.
 
   return true;
 }

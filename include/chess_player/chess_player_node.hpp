@@ -1,6 +1,10 @@
 #ifndef CHESS_PLAYER_NODE__CHESS_PLAYER_HPP_
 #define CHESS_PLAYER_NODE__CHESS_PLAYER_HPP_
 
+#include <moveit/move_group_interface/move_group_interface.h>
+#include <tf2_ros/buffer.h>
+#include <tf2_ros/transform_listener.h>
+
 #include <chess_msgs/action/find_best_move.hpp>
 #include <chess_msgs/msg/chess_move_uci.hpp>
 #include <chess_msgs/msg/chess_time.hpp>
@@ -52,8 +56,17 @@ public:
   chess_msgs::msg::ChessMoveUCI best_move;  // The best move found by the chess engine.
   std::mutex make_move_mutex;               // Mutex for planning and making a move.
 
+  // The move group for the arm of the cobot.
+  std::shared_ptr<moveit::planning_interface::MoveGroupInterface> main_move_group;
+
+  // The move group for the gripper.
+  std::shared_ptr<moveit::planning_interface::MoveGroupInterface> gripper_move_group;
+
   // The action client for finding the best move.
   std::shared_ptr<rclcpp_action::Client<chess_msgs::action::FindBestMove>> find_best_move_client;
+
+  // Transform buffer for the TF listener.
+  std::shared_ptr<tf2_ros::Buffer> tf_buffer;
 
   /**
    * Construct a new Chess Player Node object.
@@ -62,7 +75,7 @@ public:
 
   /**
    * Get the node's logger.
-   * 
+   *
    * @return The node's logger.
    */
   rclcpp::Logger get_logger() const;
@@ -80,6 +93,13 @@ public:
    * @return The state of the cobot.
    */
   State get_state() const;
+
+  /**
+   * Get the parameters for the chess player.
+   *
+   * @return The parameters for the chess player.
+   */
+  const chess_player_params::Params& get_params() const;
 
   /**
    * Get whether the cobot is enabled or not.
@@ -175,6 +195,8 @@ private:
   std::string game_fen_;                // Current game state in FEN notation.
   uint32_t white_time_left_;            // White player's time left in milliseconds.
   uint32_t black_time_left_;            // Black player's time left in milliseconds.
+
+  std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
 
   std::unique_ptr<chess_player_params::ParamListener> param_listener_;
   std::unique_ptr<chess_player_params::Params> params_;

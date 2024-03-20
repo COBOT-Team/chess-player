@@ -4,11 +4,12 @@
 
 using namespace std;
 using namespace chess_player_params;
-using namespace std::chrono_literals;
+using namespace chrono_literals;
 
 using chess_msgs::action::FindBestMove;
 using libchess::Position;
 using libchess::Side;
+using moveit::planning_interface::MoveGroupInterface;
 using placeholders::_1;
 using placeholders::_2;
 using rclcpp_action::ClientGoalHandle;
@@ -17,7 +18,7 @@ using rclcpp_action::ClientGoalHandle;
 // ======================================== Constructor ========================================= //
 //                                                                                                //
 
-ChessPlayerNode::ChessPlayerNode(std::string nodename)
+ChessPlayerNode::ChessPlayerNode(string nodename)
   : game_fen_("")
   , white_time_left_(0)
   , black_time_left_(0)
@@ -31,8 +32,8 @@ ChessPlayerNode::ChessPlayerNode(std::string nodename)
       nodename, rclcpp::NodeOptions().automatically_declare_parameters_from_overrides(true));
 
   // Set up parameters and parameter listener.
-  param_listener_ = std::make_unique<ParamListener>(node);
-  params_ = std::make_unique<Params>(param_listener_->get_params());
+  param_listener_ = make_unique<ParamListener>(node);
+  params_ = make_unique<Params>(param_listener_->get_params());
 
   // Determine which color the cobot is playing as.
   if (params_->cobot_color == "white")
@@ -41,12 +42,20 @@ ChessPlayerNode::ChessPlayerNode(std::string nodename)
     cobot_color = Side::Black;
   else {
     RCLCPP_ERROR(node->get_logger(), "Invalid cobot color: %s", params_->cobot_color.c_str());
-    throw std::runtime_error("Invalid cobot color");
+    throw runtime_error("Invalid cobot color");
   }
+
+  // Init move groups.
+  main_move_group = make_shared<MoveGroupInterface>(node, params_->cobot_move_group);
+  gripper_move_group = make_shared<MoveGroupInterface>(node, params_->gripper_move_group);
 
   // Init action client.
   find_best_move_client =
       rclcpp_action::create_client<FindBestMove>(node, params_->move_select_action);
+
+  // Init TF listener.
+  tf_buffer = make_shared<tf2_ros::Buffer>(node->get_clock());
+  tf_listener_ = make_shared<tf2_ros::TransformListener>(*tf_buffer);
 
   // Init publishers.
   cobot_state_pub_ =
@@ -134,6 +143,11 @@ ChessPlayerNode::State ChessPlayerNode::get_state() const
   return cobot_state_;
 }
 
+const Params& ChessPlayerNode::get_params() const
+{
+  return *params_;
+}
+
 bool ChessPlayerNode::get_enabled() const
 {
   return enabled_;
@@ -154,7 +168,7 @@ libchess::Position ChessPlayerNode::get_position() const
   return position_;
 }
 
-const std::vector<Point>& ChessPlayerNode::tof_pieces() const
+const vector<Point>& ChessPlayerNode::tof_pieces() const
 {
   return last_tof_pieces_;
 }

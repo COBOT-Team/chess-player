@@ -12,6 +12,7 @@ find_package(moveit_ros_planning_interface REQUIRED)
 find_package(chess_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(rclcpp_action REQUIRED)
+find_package(tf2_ros REQUIRED)
 
 generate_parameter_library(
   chess_player_params
@@ -23,6 +24,7 @@ add_subdirectory(libchess)
 add_executable(chess_player
   src/main.cpp
   src/chess_player_node.cpp
+  src/motion.cpp
 )
 
 target_include_directories(chess_player PUBLIC

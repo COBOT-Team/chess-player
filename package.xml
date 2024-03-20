@@ -13,6 +13,7 @@
   <depend>chess_msgs</depend>
   <depend>sensor_msgs</depend>
   <depend>rclcpp_action</depend>
+  <depend>tf2_ros</depend>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
