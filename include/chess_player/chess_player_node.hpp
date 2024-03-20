@@ -14,18 +14,18 @@
 #include <rclcpp_action/rclcpp_action.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 
+/**
+ * A point in 3D space.
+ */
+struct Point {
+  float x;
+  float y;
+  float z;
+};
+
 class ChessPlayerNode
 {
 public:
-  /**
-   * A point in 3D space.
-   */
-  struct Point {
-    float x;
-    float y;
-    float z;
-  };
-
   /**
    * State of the cobot.
    */
@@ -102,7 +102,7 @@ public:
    *
    * @return A list of the last detected pieces from the ToF camera.
    */
-  std::vector<Point> tof_pieces() const;
+  const std::vector<Point>& tof_pieces() const;
 
   /**
    * Get the time remaining for a specific color.
@@ -152,34 +152,6 @@ private:
    * @param[in] msg The message containing the cobot max speed.
    */
   void speed_callback_(const chess_msgs::msg::CobotSpeed::SharedPtr msg);
-
-  // /**
-  //  * Callback that is called with the response of the chess engine's action server.
-  //  *
-  //  * @param[in] goal_handle The goal handle for the action server.
-  //  */
-  // void goal_response_callback_(
-  //     const rclcpp_action::ClientGoalHandle<chess_msgs::action::FindBestMove>::SharedPtr&
-  //         goal_handle);
-
-  // /**
-  //  * Callback that is called with the feedback of the chess engine's action server.
-  //  *
-  //  * @param[in] goal_handle Goal handle for the action server.
-  //  * @param[in] feedback The feedback from the action server.
-  //  */
-  // void feedback_callback_(
-  //     rclcpp_action::ClientGoalHandle<chess_msgs::action::FindBestMove>::SharedPtr goal_handle,
-  //     const std::shared_ptr<const chess_msgs::action::FindBestMove::Feedback> feedback);
-
-  // /**
-  //  * Callback that is called with the result of the chess engine's action server.
-  //  *
-  //  * @param[in] result The result from the action server.
-  //  */
-  // void result_callback_(
-  //     const rclcpp_action::ClientGoalHandle<chess_msgs::action::FindBestMove>::WrappedResult&
-  //         result);
 
   bool enabled_;                 // Whether the cobot is enabled or not.
   float max_speed_;              // The maximum speed of the cobot in m/s.

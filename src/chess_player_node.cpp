@@ -69,98 +69,8 @@ ChessPlayerNode::ChessPlayerNode(std::string nodename)
 }
 
 //                                                                                                //
-// ====================================== Main MoveIt Code ====================================== //
+// ====================================== Public Functions ====================================== //
 //                                                                                                //
-
-// void ChessPlayerNode::take_turn()
-// {
-//   RCLCPP_INFO(node->get_logger(), "Cobot is taking its turn");
-
-//   /*
-//    * Ask the action server to find the best move.
-//    */
-
-//   const FindBestMove::Goal goal = [this] {
-//     FindBestMove::Goal goal;
-//     goal.fen.fen = game_fen_;
-//     goal.time.black_time_left = black_time_left_;
-//     goal.time.white_time_left = white_time_left_;
-//     goal.analysis_mode = false;
-//     return goal;
-//   }();
-
-//   const auto goal_handle = [this, goal] {
-//     const auto future = find_best_move_client_->async_send_goal(goal);
-//     const auto send_goal_result = rclcpp::spin_until_future_complete(node, future);
-//     if (send_goal_result != rclcpp::FutureReturnCode::SUCCESS) {
-//       RCLCPP_ERROR(node->get_logger(), "Failed to send goal to chess engine action server");
-//       return make_shared<rclcpp_action::ClientGoalHandle<FindBestMove>>(nullptr);
-//     }
-//     return future.get();
-//   }();
-
-//   if (!goal_handle) {
-//     RCLCPP_ERROR(node->get_logger(), "Chess engine action server rejected goal. Retrying in
-//     1s."); set_state(State::ERROR); this_thread::sleep_for(1s); return take_turn();
-//   }
-
-//   const auto result = [this, goal_handle] {
-//     try {
-//       const auto future = find_best_move_client_->async_get_result(goal_handle);
-//       const auto get_result = rclcpp::spin_until_future_complete(node, future);
-//       if (get_result != rclcpp::FutureReturnCode::SUCCESS) {
-//         RCLCPP_ERROR(node->get_logger(), "Failed to get result from chess engine action server");
-//         ClientGoalHandle<FindBestMove>::WrappedResult result;
-//         result.code = rclcpp_action::ResultCode::ABORTED;
-//         return result;
-//       }
-//       return future.get();
-//     }
-
-//     catch (const rclcpp_action::exceptions::UnknownGoalHandleError& e) {
-//       RCLCPP_ERROR(node->get_logger(), "Unknown goal handle error: %s", e.what());
-//       ClientGoalHandle<FindBestMove>::WrappedResult result;
-//       result.code = rclcpp_action::ResultCode::ABORTED;
-//       return result;
-//     }
-//   }();
-
-//   switch (result.code) {
-//     case rclcpp_action::ResultCode::SUCCEEDED: {
-//       best_move_ = result.result->move;
-//       RCLCPP_INFO(node->get_logger(), "Engine found the best move: %s",
-//                   best_move_.draw   ? "draw" :
-//                   best_move_.resign ? "resign" :
-//                                       best_move_.move.c_str());
-//       set_state(State::FOUND_OPTIMAL_MOVE);
-//       break;
-//     }
-//     case rclcpp_action::ResultCode::ABORTED: {
-//       RCLCPP_ERROR(node->get_logger(), "Chess engine action was aborted");
-//       set_state(State::ERROR);
-//       break;
-//     }
-//     case rclcpp_action::ResultCode::CANCELED: {
-//       RCLCPP_ERROR(node->get_logger(), "Chess engine action was canceled");
-//       set_state(State::WAITING_FOR_TURN);
-//       break;
-//     }
-//     default: {
-//       RCLCPP_ERROR(node->get_logger(), "Unknown result code from chess engine action");
-//       set_state(State::ERROR);
-//       break;
-//     }
-//   }
-// }
-
-//                                                                                                //
-// ====================================== Boring Functions ====================================== //
-//                                                                                                //
-
-uint32_t ChessPlayerNode::get_time_left(Side color) const
-{
-  return color == Side::White ? white_time_left_ : black_time_left_;
-}
 
 void ChessPlayerNode::set_state(State state)
 {
@@ -212,6 +122,41 @@ void ChessPlayerNode::set_state(State state)
   }
   RCLCPP_INFO(node->get_logger(), "Cobot state: %s", msg.state.c_str());
   cobot_state_pub_->publish(msg);
+}
+
+ChessPlayerNode::State ChessPlayerNode::get_state() const
+{
+  return cobot_state_;
+}
+
+bool ChessPlayerNode::get_enabled() const
+{
+  return enabled_;
+}
+
+float ChessPlayerNode::get_max_speed() const
+{
+  return max_speed_;
+}
+
+bool ChessPlayerNode::game_started() const
+{
+  return game_started_;
+}
+
+libchess::Position ChessPlayerNode::get_position() const
+{
+  return position_;
+}
+
+const std::vector<Point>& ChessPlayerNode::tof_pieces() const
+{
+  return last_tof_pieces_;
+}
+
+uint32_t ChessPlayerNode::get_time_left(Side color) const
+{
+  return color == Side::White ? white_time_left_ : black_time_left_;
 }
 
 //                                                                                                //
@@ -287,6 +232,9 @@ void ChessPlayerNode::game_state_callback_(const chess_msgs::msg::FullFEN::Share
     set_state(State::WAITING_FOR_TURN);
     return;
   }
+
+  // If it is our turn, set the state so that the main loop knows it's time to take its turn.
+  set_state(State::WAITING_FOR_OPTIMAL_MOVE);
 }
 
 void ChessPlayerNode::time_callback_(const chess_msgs::msg::ChessTime::SharedPtr msg)
@@ -310,59 +258,3 @@ void ChessPlayerNode::speed_callback_(const chess_msgs::msg::CobotSpeed::SharedP
 {
   max_speed_ = msg->speed;
 }
-
-//                                                                                                //
-// ====================================== Action Callbacks ====================================== //
-//                                                                                                //
-
-// void ChessPlayerNode::goal_response_callback_(
-//     const ClientGoalHandle<FindBestMove>::SharedPtr& goal_handle)
-// {
-//   if (!goal_handle) {
-//     RCLCPP_ERROR(node->get_logger(), "Chess engine action server rejected goal");
-//     set_state(State::ERROR);
-//   } else {
-//     RCLCPP_INFO(node->get_logger(), "Chess engine is calculating the best move");
-//     set_state(State::WAITING_FOR_OPTIMAL_MOVE);
-//   }
-// }
-
-// void ChessPlayerNode::feedback_callback_(
-//     ClientGoalHandle<FindBestMove>::SharedPtr goal_handle,
-//     const std::shared_ptr<const FindBestMove::Feedback> feedback)
-// {
-//   (void)goal_handle;
-//   RCLCPP_INFO(node->get_logger(), "Engine feedback: %s %s", feedback->info.type.c_str(),
-//               feedback->info.value.c_str());
-// }
-
-// void ChessPlayerNode::result_callback_(const ClientGoalHandle<FindBestMove>::WrappedResult&
-// result)
-// {
-//   switch (result.code) {
-//     case rclcpp_action::ResultCode::SUCCEEDED: {
-//       best_move_ = result.result->move;
-//       RCLCPP_INFO(node->get_logger(), "Engine found the best move: %s",
-//                   best_move_.draw   ? "draw" :
-//                   best_move_.resign ? "resign" :
-//                                       best_move_.move.c_str());
-//       set_state(State::FOUND_OPTIMAL_MOVE);
-//       break;
-//     }
-//     case rclcpp_action::ResultCode::ABORTED: {
-//       RCLCPP_ERROR(node->get_logger(), "Chess engine action was aborted");
-//       set_state(State::ERROR);
-//       break;
-//     }
-//     case rclcpp_action::ResultCode::CANCELED: {
-//       RCLCPP_ERROR(node->get_logger(), "Chess engine action was canceled");
-//       set_state(State::WAITING_FOR_TURN);
-//       break;
-//     }
-//     default: {
-//       RCLCPP_ERROR(node->get_logger(), "Unknown result code from chess engine action");
-//       set_state(State::ERROR);
-//       break;
-//     }
-//   }
-// }
