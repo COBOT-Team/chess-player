@@ -13,6 +13,7 @@ find_package(chess_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(pcl_ros REQUIRED)
 find_package(pcl_conversions REQUIRED)
+find_package(rclcpp_action REQUIRED)
 
 generate_parameter_library(
   chess_player_params
@@ -31,6 +32,7 @@ ament_target_dependencies(chess_player PUBLIC
   sensor_msgs
   pcl_ros
   pcl_conversions
+  rclcpp_action
 )
 
 target_link_libraries(chess_player PRIVATE

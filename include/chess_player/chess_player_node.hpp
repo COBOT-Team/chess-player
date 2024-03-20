@@ -3,12 +3,15 @@
 
 #include <pcl/point_cloud.h>
 
+#include <chess_msgs/action/find_best_move.hpp>
+#include <chess_msgs/msg/chess_move_uci.hpp>
 #include <chess_msgs/msg/chess_time.hpp>
 #include <chess_msgs/msg/cobot_enabled.hpp>
 #include <chess_msgs/msg/cobot_speed.hpp>
 #include <chess_msgs/msg/cobot_state.hpp>
 #include <chess_msgs/msg/full_fen.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <rclcpp_action/rclcpp_action.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 
 class ChessPlayerNode
@@ -26,6 +29,31 @@ private:
   enum class Color { WHITE = 0, BLACK = 1 };
 
   /**
+   * The current state of the cobot.
+   */
+  struct CobotState {
+    enum class State {
+      WAITING_FOR_GAME,
+      WAITING_FOR_TURN,
+      WAITING_FOR_OPTIMAL_MOVE,
+      FOUND_OPTIMAL_MOVE,
+      TAKING_PIECE,
+      MOVING_PIECE,
+      HITTING_CLOCK,
+      MOVING_TO_HOME,
+      DISABLED,
+      ERROR,
+    };
+
+    State state;
+  } cobot_state_;
+
+  /**
+   * Manipulate the AR3 to make a move.
+   */
+  void take_turn_();
+
+  /**
    * Get the time remaining for a specific color.
    *
    * @param color The color to get the time for.
@@ -34,10 +62,10 @@ private:
   uint32_t get_time_left_(Color color) const;
 
   /**
-   * Update the current state message and publish it to the GUI.
+   * Update the current state of the cobot and publish a string message to the GUI.
    *
    */
-  void update_state_msg_(const std::string& new_state);
+  void set_state_(CobotState::State state);
 
   /**
    * Callback that is called for updates to the list of TOF pieces.
@@ -74,10 +102,40 @@ private:
    */
   void speed_callback_(const chess_msgs::msg::CobotSpeed::SharedPtr msg);
 
-  Color cobot_color_;      // The color that the cobot is playing as.
-  bool enabled_;           // Whether the cobot is enabled or not.
-  float max_speed_;        // The maximum speed of the cobot in m/s.
-  std::string state_msg_;  // The state of the cobot to be displayed in the GUI.
+  /**
+   * Callback that is called with the response of the chess engine's action server.
+   *
+   * @param[in] goal_handle The goal handle for the action server.
+   */
+  void goal_response_callback_(
+      const rclcpp_action::ClientGoalHandle<chess_msgs::action::FindBestMove>::SharedPtr&
+          goal_handle);
+
+  /**
+   * Callback that is called with the feedback of the chess engine's action server.
+   *
+   * @param[in] goal_handle Goal handle for the action server.
+   * @param[in] feedback The feedback from the action server.
+   */
+  void feedback_callback_(
+      rclcpp_action::ClientGoalHandle<chess_msgs::action::FindBestMove>::SharedPtr goal_handle,
+      const std::shared_ptr<const chess_msgs::action::FindBestMove::Feedback> feedback);
+
+  /**
+   * Callback that is called with the result of the chess engine's action server.
+   *
+   * @param[in] result The result from the action server.
+   */
+  void result_callback_(
+      const rclcpp_action::ClientGoalHandle<chess_msgs::action::FindBestMove>::WrappedResult&
+          result);
+
+  Color cobot_color_;                        // The color that the cobot is playing as.
+  bool enabled_;                             // Whether the cobot is enabled or not.
+  float max_speed_;                          // The maximum speed of the cobot in m/s.
+  std::string state_msg_;                    // The state of the cobot to be displayed in the GUI.
+  bool game_started_;                        // Whether the game has started or not.
+  chess_msgs::msg::ChessMoveUCI best_move_;  // The best move found by the chess engine.
 
   std::vector<pcl::PointXYZ> last_tof_pieces_;  // Last detected pieces from the ToF camera.
   std::string game_fen_;                        // Current game state in FEN notation.

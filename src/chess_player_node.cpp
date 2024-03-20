@@ -7,7 +7,9 @@
 using namespace std;
 using namespace chess_player_params;
 
+using chess_msgs::action::FindBestMove;
 using placeholders::_1;
+using rclcpp_action::ClientGoalHandle;
 
 //                                                                                                //
 // ======================================== Constructor ========================================= //
@@ -19,7 +21,7 @@ ChessPlayerNode::ChessPlayerNode(std::string node_name)
   , black_time_left_(0)
   , enabled_(false)
   , max_speed_(0.1f)
-  , state_msg_("Initializing")
+  , game_started_(false)
 {
   // Init node with parameters configured for MoveIt2.
   node_ = rclcpp::Node::make_shared(
@@ -54,10 +56,19 @@ ChessPlayerNode::ChessPlayerNode(std::string node_name)
       params_->sub_topics.enabled, 10, bind(&ChessPlayerNode::enabled_callback_, this, _1));
   speed_sub_ = node_->create_subscription<chess_msgs::msg::CobotSpeed>(
       params_->sub_topics.max_speed, 10, bind(&ChessPlayerNode::speed_callback_, this, _1));
+
+  // Set up state.
+  set_state_(CobotState::State::WAITING_FOR_GAME);
 }
 
 //                                                                                                //
-// ========================================= Functions ========================================== //
+// ====================================== Main MoveIt Code ====================================== //
+//                                                                                                //
+
+void ChessPlayerNode::take_turn_() {}
+
+//                                                                                                //
+// ====================================== Boring Functions ====================================== //
 //                                                                                                //
 
 uint32_t ChessPlayerNode::get_time_left_(Color color) const
@@ -65,16 +76,47 @@ uint32_t ChessPlayerNode::get_time_left_(Color color) const
   return color == Color::WHITE ? white_time_left_ : black_time_left_;
 }
 
-void ChessPlayerNode::update_state_msg_(const std::string& new_state)
+void ChessPlayerNode::set_state_(CobotState::State state)
 {
-  state_msg_ = new_state;
+  cobot_state_.state = state;
   chess_msgs::msg::CobotState msg;
-  msg.state = state_msg_;
+  switch (state) {
+    case CobotState::State::WAITING_FOR_GAME:
+      msg.state = "Waiting for game to start";
+      break;
+    case CobotState::State::WAITING_FOR_TURN:
+      msg.state = "Waiting for turn";
+      break;
+    case CobotState::State::WAITING_FOR_OPTIMAL_MOVE:
+      msg.state = "Calculating optimal move";
+      break;
+    case CobotState::State::FOUND_OPTIMAL_MOVE:
+      msg.state = "Planning motion";
+      break;
+    case CobotState::State::TAKING_PIECE:
+      msg.state = "Taking opponent's piece";
+      break;
+    case CobotState::State::MOVING_PIECE:
+      msg.state = "Moving piece";
+      break;
+    case CobotState::State::HITTING_CLOCK:
+      msg.state = "Hitting the clock";
+      break;
+    case CobotState::State::MOVING_TO_HOME:
+      msg.state = "Moving to home position";
+      break;
+    case CobotState::State::DISABLED:
+      msg.state = "Disabled";
+      break;
+    case CobotState::State::ERROR:
+      msg.state = "Error";
+      break;
+  }
   cobot_state_pub_->publish(msg);
 }
 
 //                                                                                                //
-// ========================================= Callbacks ========================================== //
+// ====================================== Topic Callbacks ======================================= //
 //                                                                                                //
 
 void ChessPlayerNode::tof_pieces_callback_(const sensor_msgs::msg::PointCloud2::SharedPtr msg)
@@ -102,13 +144,69 @@ void ChessPlayerNode::time_callback_(const chess_msgs::msg::ChessTime::SharedPtr
 void ChessPlayerNode::enabled_callback_(const chess_msgs::msg::CobotEnabled::SharedPtr msg)
 {
   enabled_ = msg->enabled;
-  if (enabled_)
-    update_state_msg_("Waiting for turn");
+  if (enabled_ && game_started_)
+    set_state_(CobotState::State::WAITING_FOR_TURN);
+  else if (enabled_ && !game_started_)
+    set_state_(CobotState::State::WAITING_FOR_GAME);
   else
-    update_state_msg_("Disabled");
+    set_state_(CobotState::State::DISABLED);
 }
 
 void ChessPlayerNode::speed_callback_(const chess_msgs::msg::CobotSpeed::SharedPtr msg)
 {
   max_speed_ = msg->speed;
+}
+
+//                                                                                                //
+// ====================================== Action Callbacks ====================================== //
+//                                                                                                //
+
+void ChessPlayerNode::goal_response_callback_(
+    const ClientGoalHandle<FindBestMove>::SharedPtr& goal_handle)
+{
+  if (!goal_handle) {
+    RCLCPP_ERROR(node_->get_logger(), "Chess engine action server rejected goal");
+    set_state_(CobotState::State::ERROR);
+  } else {
+    RCLCPP_INFO(node_->get_logger(), "Chess engine is calculating the best move");
+    set_state_(CobotState::State::WAITING_FOR_OPTIMAL_MOVE);
+  }
+}
+
+void ChessPlayerNode::feedback_callback_(
+    ClientGoalHandle<FindBestMove>::SharedPtr goal_handle,
+    const std::shared_ptr<const FindBestMove::Feedback> feedback)
+{
+  RCLCPP_INFO(node_->get_logger(), "Engine feedback: %s %s", feedback->info.type.c_str(),
+              feedback->info.value.c_str());
+}
+
+void ChessPlayerNode::result_callback_(const ClientGoalHandle<FindBestMove>::WrappedResult& result)
+{
+  switch (result.code) {
+    case rclcpp_action::ResultCode::SUCCEEDED: {
+      best_move_ = result.result->move;
+      RCLCPP_INFO(node_->get_logger(), "Engine found the best move: %s",
+                  best_move_.draw   ? "draw" :
+                  best_move_.resign ? "resign" :
+                                      best_move_.move.c_str());
+      set_state_(CobotState::State::FOUND_OPTIMAL_MOVE);
+      break;
+    }
+    case rclcpp_action::ResultCode::ABORTED: {
+      RCLCPP_ERROR(node_->get_logger(), "Chess engine action was aborted");
+      set_state_(CobotState::State::ERROR);
+      break;
+    }
+    case rclcpp_action::ResultCode::CANCELED: {
+      RCLCPP_ERROR(node_->get_logger(), "Chess engine action was canceled");
+      set_state_(CobotState::State::WAITING_FOR_TURN);
+      break;
+    }
+    default: {
+      RCLCPP_ERROR(node_->get_logger(), "Unknown result code from chess engine action");
+      set_state_(CobotState::State::ERROR);
+      break;
+    }
+  }
 }
