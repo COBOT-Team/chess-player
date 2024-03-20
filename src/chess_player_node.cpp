@@ -45,7 +45,7 @@ ChessPlayerNode::ChessPlayerNode(std::string nodename)
   }
 
   // Init action client.
-  find_best_move_client_ =
+  find_best_move_client =
       rclcpp_action::create_client<FindBestMove>(node, params_->move_select_action);
 
   // Init publishers.
@@ -71,6 +71,11 @@ ChessPlayerNode::ChessPlayerNode(std::string nodename)
 //                                                                                                //
 // ====================================== Public Functions ====================================== //
 //                                                                                                //
+
+rclcpp::Logger ChessPlayerNode::get_logger() const
+{
+  return node->get_logger();
+}
 
 void ChessPlayerNode::set_state(State state)
 {
@@ -214,6 +219,16 @@ void ChessPlayerNode::game_state_callback_(const chess_msgs::msg::FullFEN::Share
   RCLCPP_INFO(node->get_logger(), "Game state updated: %s", game_fen_.c_str());
 
   if (!enabled_) return;
+
+  // If we are currently making a move, return without updating the state.
+  switch (cobot_state_) {
+    case State::WAITING_FOR_GAME:
+    case State::WAITING_FOR_TURN:
+      break;
+    default:
+      RCLCPP_WARN(node->get_logger(), "Received game state while making move");
+      return;
+  }
 
   // If the game is over, set the state and return.
   if (position_.is_terminal()) {

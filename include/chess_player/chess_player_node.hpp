@@ -10,6 +10,7 @@
 #include <chess_msgs/msg/full_fen.hpp>
 #include <chess_player_params.hpp>
 #include <libchess/position.hpp>
+#include <mutex>
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_action/rclcpp_action.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
@@ -49,11 +50,22 @@ public:
   rclcpp::Node::SharedPtr node;             // The ROS 2 node for the chess player.
   libchess::Side cobot_color;               // The color that the cobot is playing as.
   chess_msgs::msg::ChessMoveUCI best_move;  // The best move found by the chess engine.
+  std::mutex make_move_mutex;               // Mutex for planning and making a move.
+
+  // The action client for finding the best move.
+  std::shared_ptr<rclcpp_action::Client<chess_msgs::action::FindBestMove>> find_best_move_client;
 
   /**
    * Construct a new Chess Player Node object.
    */
   explicit ChessPlayerNode(std::string node_name = "chess_player");
+
+  /**
+   * Get the node's logger.
+   * 
+   * @return The node's logger.
+   */
+  rclcpp::Logger get_logger() const;
 
   /**
    * Update the current state of the cobot and publish a string message to the GUI.
@@ -168,8 +180,6 @@ private:
   std::unique_ptr<chess_player_params::Params> params_;
 
   std::shared_ptr<rclcpp::Publisher<chess_msgs::msg::CobotState>> cobot_state_pub_;
-
-  std::shared_ptr<rclcpp_action::Client<chess_msgs::action::FindBestMove>> find_best_move_client_;
 
   std::shared_ptr<rclcpp::Subscription<sensor_msgs::msg::PointCloud2>> tof_pieces_sub_;
   std::shared_ptr<rclcpp::Subscription<chess_msgs::msg::FullFEN>> game_state_sub_;
