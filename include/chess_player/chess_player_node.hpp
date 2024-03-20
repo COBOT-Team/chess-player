@@ -1,8 +1,6 @@
 #ifndef CHESS_PLAYER_NODE__CHESS_PLAYER_HPP_
 #define CHESS_PLAYER_NODE__CHESS_PLAYER_HPP_
 
-#include <pcl/point_cloud.h>
-
 #include <chess_msgs/action/find_best_move.hpp>
 #include <chess_msgs/msg/chess_move_uci.hpp>
 #include <chess_msgs/msg/chess_time.hpp>
@@ -10,6 +8,8 @@
 #include <chess_msgs/msg/cobot_speed.hpp>
 #include <chess_msgs/msg/cobot_state.hpp>
 #include <chess_msgs/msg/full_fen.hpp>
+#include <chess_player_params.hpp>
+#include <libchess/position.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_action/rclcpp_action.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
@@ -18,40 +18,91 @@ class ChessPlayerNode
 {
 public:
   /**
+   * A point in 3D space.
+   */
+  struct Point {
+    float x;
+    float y;
+    float z;
+  };
+
+  /**
+   * State of the cobot.
+   */
+  enum class State {
+    WAITING_FOR_GAME,
+    WAITING_FOR_TURN,
+    WAITING_FOR_OPTIMAL_MOVE,
+    FOUND_OPTIMAL_MOVE,
+    TAKING_PIECE,
+    MOVING_PIECE,
+    HITTING_CLOCK,
+    MOVING_TO_HOME,
+    DISABLED,
+    ERROR,
+    DRAW,
+    WIN,
+    LOSE,
+    STALEMATE,
+  };
+
+  rclcpp::Node::SharedPtr node;             // The ROS 2 node for the chess player.
+  libchess::Side cobot_color;               // The color that the cobot is playing as.
+  chess_msgs::msg::ChessMoveUCI best_move;  // The best move found by the chess engine.
+
+  /**
    * Construct a new Chess Player Node object.
    */
   explicit ChessPlayerNode(std::string node_name = "chess_player");
 
-private:
   /**
-   * A color of a player or a piece.
+   * Update the current state of the cobot and publish a string message to the GUI.
+   *
+   * @param[in] state The new state of the cobot.
    */
-  enum class Color { WHITE = 0, BLACK = 1 };
+  void set_state(State state);
 
   /**
-   * The current state of the cobot.
+   * Get state of the cobot.
+   *
+   * @return The state of the cobot.
    */
-  struct CobotState {
-    enum class State {
-      WAITING_FOR_GAME,
-      WAITING_FOR_TURN,
-      WAITING_FOR_OPTIMAL_MOVE,
-      FOUND_OPTIMAL_MOVE,
-      TAKING_PIECE,
-      MOVING_PIECE,
-      HITTING_CLOCK,
-      MOVING_TO_HOME,
-      DISABLED,
-      ERROR,
-    };
-
-    State state;
-  } cobot_state_;
+  State get_state() const;
 
   /**
-   * Manipulate the AR3 to make a move.
+   * Get whether the cobot is enabled or not.
+   *
+   * @return Whether the cobot is enabled or not.
    */
-  void take_turn_();
+  bool get_enabled() const;
+
+  /**
+   * Get the maximum speed of the cobot.
+   *
+   * @return The maximum speed of the cobot in m/s.
+   */
+  float get_max_speed() const;
+
+  /**
+   * Get whether the game has started or not.
+   *
+   * @return Whether the game has started or not.
+   */
+  bool game_started() const;
+
+  /**
+   * Get the current position of the chess board.
+   *
+   * @return The current position of the chess board.
+   */
+  libchess::Position get_position() const;
+
+  /**
+   * Get a list of the last detected pieces from the ToF camera.
+   *
+   * @return A list of the last detected pieces from the ToF camera.
+   */
+  std::vector<Point> tof_pieces() const;
 
   /**
    * Get the time remaining for a specific color.
@@ -59,13 +110,13 @@ private:
    * @param color The color to get the time for.
    * @return The time remaining for the specified color in milliseconds.
    */
-  uint32_t get_time_left_(Color color) const;
+  uint32_t get_time_left(libchess::Side color) const;
 
+private:
   /**
-   * Update the current state of the cobot and publish a string message to the GUI.
-   *
+   * The current state of the cobot.
    */
-  void set_state_(CobotState::State state);
+  State cobot_state_;
 
   /**
    * Callback that is called for updates to the list of TOF pieces.
@@ -102,52 +153,51 @@ private:
    */
   void speed_callback_(const chess_msgs::msg::CobotSpeed::SharedPtr msg);
 
-  /**
-   * Callback that is called with the response of the chess engine's action server.
-   *
-   * @param[in] goal_handle The goal handle for the action server.
-   */
-  void goal_response_callback_(
-      const rclcpp_action::ClientGoalHandle<chess_msgs::action::FindBestMove>::SharedPtr&
-          goal_handle);
+  // /**
+  //  * Callback that is called with the response of the chess engine's action server.
+  //  *
+  //  * @param[in] goal_handle The goal handle for the action server.
+  //  */
+  // void goal_response_callback_(
+  //     const rclcpp_action::ClientGoalHandle<chess_msgs::action::FindBestMove>::SharedPtr&
+  //         goal_handle);
 
-  /**
-   * Callback that is called with the feedback of the chess engine's action server.
-   *
-   * @param[in] goal_handle Goal handle for the action server.
-   * @param[in] feedback The feedback from the action server.
-   */
-  void feedback_callback_(
-      rclcpp_action::ClientGoalHandle<chess_msgs::action::FindBestMove>::SharedPtr goal_handle,
-      const std::shared_ptr<const chess_msgs::action::FindBestMove::Feedback> feedback);
+  // /**
+  //  * Callback that is called with the feedback of the chess engine's action server.
+  //  *
+  //  * @param[in] goal_handle Goal handle for the action server.
+  //  * @param[in] feedback The feedback from the action server.
+  //  */
+  // void feedback_callback_(
+  //     rclcpp_action::ClientGoalHandle<chess_msgs::action::FindBestMove>::SharedPtr goal_handle,
+  //     const std::shared_ptr<const chess_msgs::action::FindBestMove::Feedback> feedback);
 
-  /**
-   * Callback that is called with the result of the chess engine's action server.
-   *
-   * @param[in] result The result from the action server.
-   */
-  void result_callback_(
-      const rclcpp_action::ClientGoalHandle<chess_msgs::action::FindBestMove>::WrappedResult&
-          result);
+  // /**
+  //  * Callback that is called with the result of the chess engine's action server.
+  //  *
+  //  * @param[in] result The result from the action server.
+  //  */
+  // void result_callback_(
+  //     const rclcpp_action::ClientGoalHandle<chess_msgs::action::FindBestMove>::WrappedResult&
+  //         result);
 
-  Color cobot_color_;                        // The color that the cobot is playing as.
-  bool enabled_;                             // Whether the cobot is enabled or not.
-  float max_speed_;                          // The maximum speed of the cobot in m/s.
-  std::string state_msg_;                    // The state of the cobot to be displayed in the GUI.
-  bool game_started_;                        // Whether the game has started or not.
-  chess_msgs::msg::ChessMoveUCI best_move_;  // The best move found by the chess engine.
+  bool enabled_;                 // Whether the cobot is enabled or not.
+  float max_speed_;              // The maximum speed of the cobot in m/s.
+  std::string state_msg_;        // The state of the cobot to be displayed in the GUI.
+  bool game_started_;            // Whether the game has started or not.
+  libchess::Position position_;  // The current position of the chess board.
 
-  std::vector<pcl::PointXYZ> last_tof_pieces_;  // Last detected pieces from the ToF camera.
-  std::string game_fen_;                        // Current game state in FEN notation.
-  uint32_t white_time_left_;                    // White player's time left in milliseconds.
-  uint32_t black_time_left_;                    // Black player's time left in milliseconds.
-
-  rclcpp::Node::SharedPtr node_;
+  std::vector<Point> last_tof_pieces_;  // Last detected pieces from the ToF camera.
+  std::string game_fen_;                // Current game state in FEN notation.
+  uint32_t white_time_left_;            // White player's time left in milliseconds.
+  uint32_t black_time_left_;            // Black player's time left in milliseconds.
 
   std::unique_ptr<chess_player_params::ParamListener> param_listener_;
   std::unique_ptr<chess_player_params::Params> params_;
 
   std::shared_ptr<rclcpp::Publisher<chess_msgs::msg::CobotState>> cobot_state_pub_;
+
+  std::shared_ptr<rclcpp_action::Client<chess_msgs::action::FindBestMove>> find_best_move_client_;
 
   std::shared_ptr<rclcpp::Subscription<sensor_msgs::msg::PointCloud2>> tof_pieces_sub_;
   std::shared_ptr<rclcpp::Subscription<chess_msgs::msg::FullFEN>> game_state_sub_;

@@ -11,8 +11,6 @@ find_package(generate_parameter_library REQUIRED)
 find_package(moveit_ros_planning_interface REQUIRED)
 find_package(chess_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
-find_package(pcl_ros REQUIRED)
-find_package(pcl_conversions REQUIRED)
 find_package(rclcpp_action REQUIRED)
 
 generate_parameter_library(
@@ -20,23 +18,28 @@ generate_parameter_library(
   src/parameters.yaml
 )
 
-add_executable(chess_player src/main.cpp src/chess_player_node.cpp)
+add_subdirectory(libchess)
+
+add_executable(chess_player
+  src/main.cpp
+  src/chess_player_node.cpp
+)
+
 target_include_directories(chess_player PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
-target_compile_features(chess_player PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
+target_compile_features(chess_player PUBLIC c_std_99 cxx_std_20)  # Require C99 and C++20
 
 ament_target_dependencies(chess_player PUBLIC
   moveit_ros_planning_interface
   chess_msgs
   sensor_msgs
-  pcl_ros
-  pcl_conversions
   rclcpp_action
 )
 
 target_link_libraries(chess_player PRIVATE
   chess_player_params
+  libchess_static
 )
 
 install(TARGETS chess_player
