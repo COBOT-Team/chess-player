@@ -46,12 +46,12 @@ ChessPlayerNode::ChessPlayerNode(string nodename)
   }
 
   // Init move groups.
-  main_move_group = make_shared<MoveGroupInterface>(node, params_->cobot_move_group);
-  gripper_move_group = make_shared<MoveGroupInterface>(node, params_->gripper_move_group);
+  main_move_group = make_shared<MoveGroupInterface>(node, params_->move_groups.cobot);
+  gripper_move_group = make_shared<MoveGroupInterface>(node, params_->move_groups.gripper);
 
   // Init action client.
   find_best_move_client =
-      rclcpp_action::create_client<FindBestMove>(node, params_->move_select_action);
+      rclcpp_action::create_client<FindBestMove>(node, params_->actions.find_best_move);
 
   // Init TF listener.
   tf_buffer = make_shared<tf2_ros::Buffer>(node->get_clock());

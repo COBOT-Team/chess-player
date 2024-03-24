@@ -2,6 +2,7 @@
 #include <rclcpp/rclcpp.hpp>
 
 #include "chess_player/chess_player_node.hpp"
+#include "chess_player/motion.hpp"
 #include "chess_player/result.hpp"
 
 using namespace std;
@@ -114,7 +115,18 @@ Result find_best_move(ChessPlayerNode& chess_player)
  */
 Result capture_at(ChessPlayerNode& chess_player, const libchess::Square& square)
 {
-  // TODO: Implement this function.
+  // Pick up the piece.
+  {
+    const auto result = pick_up_piece(chess_player, square);
+    if (result != Result::OK) return result;
+  }
+
+  // Deposit the piece.
+  {
+    const auto result = deposit_captured_piece(chess_player);
+    if (result != Result::OK) return result;
+  }
+
   return Result::OK;
 }
 
@@ -128,7 +140,20 @@ Result capture_at(ChessPlayerNode& chess_player, const libchess::Square& square)
  */
 Result move_piece(ChessPlayerNode& chess_player, const libchess::Move& move)
 {
-  // TODO: Implement this function.
+  // Pick up the piece at the from square.
+  {
+    const auto result = pick_up_piece(chess_player, move.from());
+    if (result != Result::OK) return result;
+  }
+
+  // Place the piece at the to square.
+  {
+    const auto result = place_piece(chess_player, move.to());
+    if (result != Result::OK) return result;
+  }
+
+  // TODO: Promote the piece if necessary.
+
   return Result::OK;
 }
 
@@ -229,11 +254,37 @@ bool loop_fn(ChessPlayerNode& chess_player)
 
   // Hit the clock.
   chess_player.set_state(ChessPlayerNode::State::HITTING_CLOCK);
-  // TODO: Implement this.
+  while (1) {
+    const auto result = hit_clock(chess_player);
+    switch (result) {
+      case Result::OK:
+        break;
+      case Result::ERR_RETRY:
+        RCLCPP_WARN(chess_player.get_logger(), "Failed to hit clock, retrying in 100ms");
+        spin_for(chess_player.node, 100ms);
+        continue;
+      case Result::ERR_FATAL:
+        RCLCPP_ERROR(chess_player.get_logger(), "Failed to hit clock, exiting");
+        return false;
+    }
+  }
 
   // Move to home.
   chess_player.set_state(ChessPlayerNode::State::MOVING_TO_HOME);
-  // TODO: Implement this.
+  while (1) {
+    const auto result = move_home(chess_player);
+    switch (result) {
+      case Result::OK:
+        break;
+      case Result::ERR_RETRY:
+        RCLCPP_WARN(chess_player.get_logger(), "Failed to move to home, retrying in 100ms");
+        spin_for(chess_player.node, 100ms);
+        continue;
+      case Result::ERR_FATAL:
+        RCLCPP_ERROR(chess_player.get_logger(), "Failed to move to home, exiting");
+        return false;
+    }
+  }
 
   return true;
 }

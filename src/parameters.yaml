@@ -7,54 +7,61 @@ chess_player_params:
       validation: { one_of<>: [["white", "black"]] },
     }
 
-  cobot_move_group:
-    {
-      type: string,
-      default_value: "cobot0",
-      description: "The name of the move group to use for the COBOT arm.",
-    }
+  move_groups:
+    cobot:
+      {
+        type: string,
+        default_value: "cobot0",
+        description: "The name of the move group to use for the COBOT arm.",
+      }
+    gripper:
+      {
+        type: string,
+        default_value: "cobot0_gripper",
+        description: "The name of the move group to use for the end effector.",
+      }
 
-  gripper_move_group:
-    {
-      type: string,
-      default_value: "cobot0_gripper",
-      description: "The name of the move group to use for the end effector.",
-    }
+  frames:
+    chessboard:
+      {
+        type: string,
+        default_value: "chessboard_frame",
+        description: "The TF2 frame_id of the chessboard.",
+      }
 
-  cobot_base_frame:
-    {
-      type: string,
-      default_value: "cobot0_base_link",
-      description: "The TF2 frame_id of the COBOT base.",
-    }
+  measurements:
+    chessboard_square_size:
+      {
+        type: double,
+        default_value: 0.035,
+        description: "The size of each square on the chessboard in meters.",
+      }
+    hover_above_board:
+      {
+        type: double,
+        default_value: 0.2,
+        description: "The height to hover above the board in meters.",
+      }
+    min_grasp_height:
+      {
+        type: double,
+        default_value: 0.1,
+        description: "The minimum height for the gripper to go to in order to pick up a piece.",
+      }
+    pick_up_height:
+      {
+        type: double,
+        default_value: 0.3,
+        description: "The height to raise a piece to after picking it up.",
+      }
 
-  cobot_gripper_frame:
-    {
-      type: string,
-      default_value: "cobot0_link_gripper",
-      description: "The TF2 frame_id of the COBOT end effector.",
-    }
-
-  chessboard_frame:
-    {
-      type: string,
-      default_value: "chessboard_frame",
-      description: "The TF2 frame_id of the chessboard.",
-    }
-
-  move_select_action:
-    {
-      type: string,
-      default_value: "/chess/find_best_move",
-      description: "The action to call to find the best move.",
-    }
-
-  chessboard_square_size:
-    {
-      type: double,
-      default_value: 0.035,
-      description: "The size of each square on the chessboard in meters.",
-    }
+  actions:
+    find_best_move:
+      {
+        type: string,
+        default_value: "/chess/find_best_move",
+        description: "The action to call to find the best move.",
+      }
 
   sub_topics:
     tof_points:

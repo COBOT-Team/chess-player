@@ -10,4 +10,4 @@ enum class Result {
   ERR_FATAL,  // The operation failed and cannot be retried.
 };
 
-#endif;
+#endif
