@@ -1,13 +1,19 @@
-#include "chess_player/motion.hpp"
-
 #include <geometry_msgs/msg/pose.hpp>
 #include <geometry_msgs/msg/transform.hpp>
+#include <libchess/position.hpp>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+
+#include "chess_player/chess_player_node.hpp"
+#include "chess_player/result.hpp"
 
 using namespace std;
 
 using geometry_msgs::msg::Pose;
 using geometry_msgs::msg::Transform;
+
+//                                                                                                //
+// ===================================== Utility Functions ====================================== //
+//                                                                                                //
 
 /**
  * Return the pose of the end effector over a square on the chessboard.
@@ -68,6 +74,12 @@ Pose get_pose_over_square(ChessPlayerNode& chess_player, const libchess::Square&
  */
 Result move_to_pose(ChessPlayerNode& chess_player, const Pose& pose)
 {
+  // Make sure the cobot isn't disabled.
+  if (chess_player.get_state() == ChessPlayerNode::State::DISABLED) {
+    RCLCPP_ERROR(chess_player.node->get_logger(), "Cobot was disabled; not planning motion");
+    return Result::ERR_FATAL;
+  }
+
   // Set the pose target.
   if (!chess_player.main_move_group->setPoseTarget(pose)) {
     RCLCPP_ERROR(chess_player.node->get_logger(), "Failed to set pose target");
@@ -85,14 +97,22 @@ Result move_to_pose(ChessPlayerNode& chess_player, const Pose& pose)
     return Result::ERR_FATAL;
   }
 
-  // Execute the motion.
-  const auto execute_result = chess_player.main_move_group->execute(plan);
-  if (execute_result != moveit::core::MoveItErrorCode::SUCCESS) {
-    RCLCPP_ERROR(chess_player.node->get_logger(), "Failed to execute motion");
+  // Make sure the cobot wasn't disabled during motion planning.
+  if (chess_player.get_state() == ChessPlayerNode::State::DISABLED) {
+    RCLCPP_ERROR(chess_player.node->get_logger(), "Cobot was disabled; discarding planned motion");
     return Result::ERR_FATAL;
   }
 
-  return Result::OK;
+  // Execute the motion.
+  const auto execute_result = chess_player.main_move_group->execute(plan);
+  switch (execute_result.val) {
+    case moveit::core::MoveItErrorCode::SUCCESS:
+    case moveit::core::MoveItErrorCode::TIMED_OUT:
+      return Result::OK;
+    default:
+      RCLCPP_ERROR(chess_player.node->get_logger(), "Failed to execute motion");
+      return Result::ERR_FATAL;
+  }
 }
 
 /**
@@ -105,6 +125,12 @@ Result move_to_pose(ChessPlayerNode& chess_player, const Pose& pose)
  */
 Result move_to_pose_cartesian(ChessPlayerNode& chess_player, const Pose& pose)
 {
+  // Make sure the cobot isn't disabled.
+  if (chess_player.get_state() == ChessPlayerNode::State::DISABLED) {
+    RCLCPP_ERROR(chess_player.node->get_logger(), "Cobot was disabled; not planning motion");
+    return Result::ERR_FATAL;
+  }
+
   // Set the waypoints. The first waypoint is the current pose, and the second waypoint is the
   // target pose.
   vector<Pose> waypoints;
@@ -120,11 +146,27 @@ Result move_to_pose_cartesian(ChessPlayerNode& chess_player, const Pose& pose)
     return Result::ERR_FATAL;
   }
 
-  // Execute the motion.
-  chess_player.main_move_group->execute(trajectory);
+  // Make sure the cobot wasn't disabled during motion planning.
+  if (chess_player.get_state() == ChessPlayerNode::State::DISABLED) {
+    RCLCPP_ERROR(chess_player.node->get_logger(), "Cobot was disabled; discarding planned motion");
+    return Result::ERR_FATAL;
+  }
 
-  return Result::OK;
+  // Execute the motion.
+  const auto execute_result = chess_player.main_move_group->execute(trajectory);
+  switch (execute_result.val) {
+    case moveit::core::MoveItErrorCode::SUCCESS:
+    case moveit::core::MoveItErrorCode::TIMED_OUT:
+      return Result::OK;
+    default:
+      RCLCPP_ERROR(chess_player.node->get_logger(), "Failed to execute motion");
+      return Result::ERR_FATAL;
+  }
 }
+
+//                                                                                                //
+// ===================================== Motion Components ====================================== //
+//                                                                                                //
 
 Result move_above_square(ChessPlayerNode& chess_player, const libchess::Square& square)
 {
@@ -139,6 +181,13 @@ Result align_to_piece(ChessPlayerNode& chess_player)
   return Result::OK;
 }
 
+/**
+ * Pick up a piece from a square that the gripper is above.
+ *
+ * @param[in] chess_player The chess player node wrapper.
+ * @param[in] square The square to pick up a piece from.
+ * @return The result of the operation.
+ */
 Result pick_up_piece(ChessPlayerNode& chess_player, const libchess::Square& square)
 {
   // Move the gripper above the square.
@@ -151,6 +200,12 @@ Result pick_up_piece(ChessPlayerNode& chess_player, const libchess::Square& squa
   {
     const auto result = align_to_piece(chess_player);
     if (result != Result::OK) return result;
+  }
+
+  // Make sure the cobot isn't disabled.
+  if (chess_player.get_state() == ChessPlayerNode::State::DISABLED) {
+    RCLCPP_ERROR(chess_player.node->get_logger(), "Cobot was disabled; not planning motion");
+    return Result::ERR_FATAL;
   }
 
   // Calculate the pose at the center of the square, on the board surface. This is used to calculate
@@ -168,7 +223,8 @@ Result pick_up_piece(ChessPlayerNode& chess_player, const libchess::Square& squa
       pose.position.z += chess_player.get_params().measurements.min_grasp_height;
       return pose;
     }();
-    const auto result = move_to_pose_cartesian(chess_player, down_pose);
+    // const auto result = move_to_pose_cartesian(chess_player, down_pose);
+    const auto result = move_to_pose(chess_player, down_pose);
     if (result != Result::OK) return result;
   }
 
@@ -188,13 +244,21 @@ Result pick_up_piece(ChessPlayerNode& chess_player, const libchess::Square& squa
       pose.position.z += chess_player.get_params().measurements.hover_above_board;
       return pose;
     }();
-    const auto result = move_to_pose_cartesian(chess_player, up_pose);
+    // const auto result = move_to_pose_cartesian(chess_player, up_pose);
+    const auto result = move_to_pose(chess_player, up_pose);
     if (result != Result::OK) return result;
   }
 
   return Result::OK;
 }
 
+/**
+ * Place a held piece at a square.
+ *
+ * @param[in] chess_player The chess player node wrapper.
+ * @param[in] square The square to place a piece at.
+ * @return The result of the operation.
+ */
 Result place_piece(ChessPlayerNode& chess_player, const libchess::Square& square)
 {
   // Move the gripper above the square.
@@ -244,13 +308,31 @@ Result place_piece(ChessPlayerNode& chess_player, const libchess::Square& square
   return Result::OK;
 }
 
+/**
+ * Deposit a captured piece somewhere off of the board.
+ *
+ * @param[in] chess_player The chess player node wrapper.
+ * @return The result of the operation.
+ */
 Result deposit_captured_piece(ChessPlayerNode& chess_player)
 {
+  // Make sure the cobot isn't disabled.
+  if (chess_player.get_state() == ChessPlayerNode::State::DISABLED) {
+    RCLCPP_ERROR(chess_player.node->get_logger(), "Cobot was disabled; not planning motion");
+    return Result::ERR_FATAL;
+  }
+
   // Move the gripper to the deposit location.
   chess_player.main_move_group->setNamedTarget("deposit");
   if (!chess_player.main_move_group->move()) {
     RCLCPP_ERROR(chess_player.node->get_logger(), "Failed to move to deposit location");
     return Result::ERR_RETRY;
+  }
+
+  // Make sure the cobot isn't disabled.
+  if (chess_player.get_state() == ChessPlayerNode::State::DISABLED) {
+    RCLCPP_ERROR(chess_player.node->get_logger(), "Cobot was disabled; not planning motion");
+    return Result::ERR_FATAL;
   }
 
   // Open the gripper.
@@ -263,48 +345,136 @@ Result deposit_captured_piece(ChessPlayerNode& chess_player)
   return Result::OK;
 }
 
-Result hit_clock(ChessPlayerNode& chess_player)
+//                                                                                                //
+// ====================================== Class Functions ======================================= //
+//                                                                                                //
+
+Result ChessPlayerNode::capture_at_(const libchess::Square& square)
 {
+  // Make sure the cobot isn't disabled.
+  if (get_state() == ChessPlayerNode::State::DISABLED) {
+    RCLCPP_ERROR(node->get_logger(), "Cobot was disabled; not planning motion");
+    return Result::ERR_FATAL;
+  }
+
+  // Pick up the piece.
+  {
+    const auto result = pick_up_piece(*this, square);
+    if (result != Result::OK) return result;
+  }
+
+  // Make sure the cobot isn't disabled.
+  if (get_state() == ChessPlayerNode::State::DISABLED) {
+    RCLCPP_ERROR(node->get_logger(), "Cobot was disabled; not planning motion");
+    return Result::ERR_FATAL;
+  }
+
+  // Deposit the piece.
+  {
+    const auto result = deposit_captured_piece(*this);
+    if (result != Result::OK) return result;
+  }
+
+  return Result::OK;
+}
+
+Result ChessPlayerNode::move_piece_(const libchess::Move& move)
+{
+  // Make sure the cobot isn't disabled.
+  if (get_state() == ChessPlayerNode::State::DISABLED) {
+    RCLCPP_ERROR(node->get_logger(), "Cobot was disabled; not planning motion");
+    return Result::ERR_FATAL;
+  }
+
+  // Pick up the piece at the from square.
+  {
+    const auto result = pick_up_piece(*this, move.from());
+    if (result != Result::OK) return result;
+  }
+
+  // Make sure the cobot isn't disabled.
+  if (get_state() == ChessPlayerNode::State::DISABLED) {
+    RCLCPP_ERROR(node->get_logger(), "Cobot was disabled; not planning motion");
+    return Result::ERR_FATAL;
+  }
+
+  // Place the piece at the to square.
+  {
+    const auto result = place_piece(*this, move.to());
+    if (result != Result::OK) return result;
+  }
+
+  // TODO: Promote the piece if necessary.
+
+  return Result::OK;
+}
+
+Result ChessPlayerNode::hit_clock_()
+{
+  // Make sure the cobot isn't disabled.
+  if (get_state() == ChessPlayerNode::State::DISABLED) {
+    RCLCPP_ERROR(node->get_logger(), "Cobot was disabled; not planning motion");
+    return Result::ERR_FATAL;
+  }
+
   // Move the gripper to the clock location.
-  chess_player.main_move_group->setNamedTarget("above_clock");
-  if (!chess_player.main_move_group->move()) {
-    RCLCPP_ERROR(chess_player.node->get_logger(), "Failed to move to clock location");
+  main_move_group->setNamedTarget("above_clock");
+  if (!main_move_group->move()) {
+    RCLCPP_ERROR(node->get_logger(), "Failed to move to clock location");
     return Result::ERR_RETRY;
+  }
+
+  // Make sure the cobot isn't disabled.
+  if (get_state() == ChessPlayerNode::State::DISABLED) {
+    RCLCPP_ERROR(node->get_logger(), "Cobot was disabled; not planning motion");
+    return Result::ERR_FATAL;
   }
 
   // Press the clock.
-  chess_player.gripper_move_group->setNamedTarget("press_clock");
-  if (!chess_player.gripper_move_group->move()) {
-    RCLCPP_ERROR(chess_player.node->get_logger(), "Failed to press clock");
+  gripper_move_group->setNamedTarget("press_clock");
+  if (!gripper_move_group->move()) {
+    RCLCPP_ERROR(node->get_logger(), "Failed to press clock");
     return Result::ERR_RETRY;
+  }
+
+  // Make sure the cobot isn't disabled.
+  if (get_state() == ChessPlayerNode::State::DISABLED) {
+    RCLCPP_ERROR(node->get_logger(), "Cobot was disabled; not planning motion");
+    return Result::ERR_FATAL;
   }
 
   // Move the gripper back up.
-  chess_player.gripper_move_group->setNamedTarget("above_clock");
-  if (!chess_player.gripper_move_group->move()) {
-    RCLCPP_ERROR(chess_player.node->get_logger(), "Failed to move back up");
+  gripper_move_group->setNamedTarget("above_clock");
+  if (!gripper_move_group->move()) {
+    RCLCPP_ERROR(node->get_logger(), "Failed to move back up");
     return Result::ERR_RETRY;
   }
 
   return Result::OK;
 }
 
-Result move_home(ChessPlayerNode& chess_player)
+Result ChessPlayerNode::move_home_()
 {
-  chess_player.main_move_group->setNamedTarget("home");
-  if (!chess_player.main_move_group->move()) {
-    RCLCPP_ERROR(chess_player.node->get_logger(), "Failed to move to home location");
+  // Make sure the cobot isn't disabled.
+  if (get_state() == ChessPlayerNode::State::DISABLED) {
+    RCLCPP_ERROR(node->get_logger(), "Cobot was disabled; not planning motion");
+    return Result::ERR_FATAL;
+  }
+
+  main_move_group->setNamedTarget("home");
+  if (!main_move_group->move()) {
+    RCLCPP_ERROR(node->get_logger(), "Failed to move to home location");
     return Result::ERR_RETRY;
   }
 
   return Result::OK;
 }
 
-Result move_out_of_the_way(ChessPlayerNode& chess_player)
+Result ChessPlayerNode::move_out_of_way_()
 {
-  chess_player.main_move_group->setNamedTarget("out_of_the_way");
-  if (!chess_player.main_move_group->move()) {
-    RCLCPP_ERROR(chess_player.node->get_logger(), "Failed to move out of the way");
+  main_move_group->setNamedTarget("out_of_way");
+  if (!main_move_group->move()) {
+    RCLCPP_ERROR(node->get_logger(), "Failed to move out of the way");
     return Result::ERR_RETRY;
   }
 

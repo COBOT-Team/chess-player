@@ -47,6 +47,7 @@ ChessPlayerNode::ChessPlayerNode(string nodename)
 
   // Init move groups.
   main_move_group = make_shared<MoveGroupInterface>(node, params_->move_groups.cobot);
+  main_move_group->setMaxAccelerationScalingFactor(1.0);
   gripper_move_group = make_shared<MoveGroupInterface>(node, params_->move_groups.gripper);
 
   // Init action client.
@@ -58,20 +59,34 @@ ChessPlayerNode::ChessPlayerNode(string nodename)
   tf_listener_ = make_shared<tf2_ros::TransformListener>(*tf_buffer);
 
   // Init publishers.
+  string prefix = params_->cobot_ns.empty() ? "" : params_->cobot_ns + "/";
   cobot_state_pub_ =
-      node->create_publisher<chess_msgs::msg::CobotState>(params_->pub_topics.state, 10);
+      node->create_publisher<chess_msgs::msg::CobotState>(prefix + params_->pub_topics.state, 10);
+
+  // Init callback groups.
+  reentrant_cb_group_ = node->create_callback_group(rclcpp::CallbackGroupType::Reentrant);
+  move_cb_group_ = node->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  rclcpp::SubscriptionOptions reentrant_options;
+  reentrant_options.callback_group = reentrant_cb_group_;
+  rclcpp::SubscriptionOptions move_options;
+  move_options.callback_group = move_cb_group_;
 
   // Init subscribers.
   tof_pieces_sub_ = node->create_subscription<sensor_msgs::msg::PointCloud2>(
-      params_->sub_topics.tof_points, 10, bind(&ChessPlayerNode::tof_pieces_callback_, this, _1));
+      params_->sub_topics.tof_points, 10, bind(&ChessPlayerNode::tof_pieces_callback_, this, _1),
+      reentrant_options);
   game_state_sub_ = node->create_subscription<chess_msgs::msg::FullFEN>(
-      params_->sub_topics.game_state, 10, bind(&ChessPlayerNode::game_state_callback_, this, _1));
+      params_->sub_topics.game_state, 10, bind(&ChessPlayerNode::game_state_callback_, this, _1),
+      move_options);
   time_sub_ = node->create_subscription<chess_msgs::msg::ChessTime>(
-      params_->sub_topics.time, 10, bind(&ChessPlayerNode::time_callback_, this, _1));
+      params_->sub_topics.time, 10, bind(&ChessPlayerNode::time_callback_, this, _1),
+      reentrant_options);
   enabled_sub_ = node->create_subscription<chess_msgs::msg::CobotEnabled>(
-      params_->sub_topics.enabled, 10, bind(&ChessPlayerNode::enabled_callback_, this, _1));
+      prefix + params_->sub_topics.enabled, 10, bind(&ChessPlayerNode::enabled_callback_, this, _1),
+      reentrant_options);
   speed_sub_ = node->create_subscription<chess_msgs::msg::CobotSpeed>(
-      params_->sub_topics.max_speed, 10, bind(&ChessPlayerNode::speed_callback_, this, _1));
+      prefix + params_->sub_topics.max_speed, 10, bind(&ChessPlayerNode::speed_callback_, this, _1),
+      reentrant_options);
 
   // Set up state.
   set_state(State::WAITING_FOR_GAME);
@@ -226,10 +241,12 @@ void ChessPlayerNode::tof_pieces_callback_(const sensor_msgs::msg::PointCloud2::
 
 void ChessPlayerNode::game_state_callback_(const chess_msgs::msg::FullFEN::SharedPtr msg)
 {
+  game_started_ = true;
+  if (game_fen_ == msg->fen) return;
+
   // Update game state.
   game_fen_ = msg->fen;
   position_.set_fen(game_fen_);
-  game_started_ = true;
   RCLCPP_INFO(node->get_logger(), "Game state updated: %s", game_fen_.c_str());
 
   if (!enabled_) return;
@@ -238,6 +255,7 @@ void ChessPlayerNode::game_state_callback_(const chess_msgs::msg::FullFEN::Share
   switch (cobot_state_) {
     case State::WAITING_FOR_GAME:
     case State::WAITING_FOR_TURN:
+    case State::DISABLED:
       break;
     default:
       RCLCPP_WARN(node->get_logger(), "Received game state while making move");
@@ -262,8 +280,9 @@ void ChessPlayerNode::game_state_callback_(const chess_msgs::msg::FullFEN::Share
     return;
   }
 
-  // If it is our turn, set the state so that the main loop knows it's time to take its turn.
+  // If it is our turn, set the state and take a turn.
   set_state(State::WAITING_FOR_OPTIMAL_MOVE);
+  take_turn_();
 }
 
 void ChessPlayerNode::time_callback_(const chess_msgs::msg::ChessTime::SharedPtr msg)
@@ -274,16 +293,25 @@ void ChessPlayerNode::time_callback_(const chess_msgs::msg::ChessTime::SharedPtr
 
 void ChessPlayerNode::enabled_callback_(const chess_msgs::msg::CobotEnabled::SharedPtr msg)
 {
+  if (enabled_ == msg->enabled) return;
   enabled_ = msg->enabled;
-  if (enabled_ && game_started_)
-    set_state(State::WAITING_FOR_TURN);
-  else if (enabled_ && !game_started_)
-    set_state(State::WAITING_FOR_GAME);
-  else
+  if (enabled_) {
+    if (game_started_) {
+      set_state(State::WAITING_FOR_TURN);
+      if (position_.turn() == cobot_color) take_turn_();
+    } else
+      set_state(State::WAITING_FOR_GAME);
+  } else {
+    main_move_group->stop();
+    gripper_move_group->stop();
     set_state(State::DISABLED);
+    // this_thread::sleep_for(100ms);
+    move_out_of_way_();
+  }
 }
 
 void ChessPlayerNode::speed_callback_(const chess_msgs::msg::CobotSpeed::SharedPtr msg)
 {
   max_speed_ = msg->speed;
+  main_move_group->setMaxVelocityScalingFactor(max_speed_);
 }

@@ -26,6 +26,7 @@ add_executable(chess_player
   src/main.cpp
   src/chess_player_node.cpp
   src/motion.cpp
+  src/play_game.cpp
 )
 
 target_include_directories(chess_player PUBLIC

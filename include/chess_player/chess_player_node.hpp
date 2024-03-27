@@ -19,6 +19,8 @@
 #include <rclcpp_action/rclcpp_action.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 
+#include "chess_player/result.hpp"
+
 /**
  * A point in 3D space.
  */
@@ -185,6 +187,59 @@ private:
    */
   void speed_callback_(const chess_msgs::msg::CobotSpeed::SharedPtr msg);
 
+  /**
+   * Query the action server for the best move.
+   *
+   * @return The result of the operation.
+   */
+  Result find_best_move_();
+
+  /**
+   * Capture a piece at a given square. This will pick up the piece at the given square and remove
+   * it from the board.
+   *
+   * @param[in] square The square to capture a piece at.
+   * @return The result of the operation.
+   */
+  Result capture_at_(const libchess::Square& square);
+
+  /**
+   * Move a piece from one square to another. This will move the piece from the first square to the
+   * second square.
+   *
+   * @param[in] move The move to make.
+   * @return The result of the operation.
+   */
+  Result move_piece_(const libchess::Move& move);
+
+  /**
+   * Press the clock to end the turn.
+   *
+   * @return The result of the operation.
+   */
+  Result hit_clock_();
+
+  /**
+   * Move the cobot to the home position. This is used when the cobot is waiting to take a turn.
+   *
+   * @return The result of the operation.
+   */
+  Result move_home_();
+
+  /**
+   * Move the cobot out of the way of the board. This is used when the cobot is disabled.
+   *
+   * @return The result of the operation.
+   */
+  Result move_out_of_way_();
+
+  /**
+   * Move the cobot to take a turn in the chess game.
+   *
+   * @return False if a fatal error has ocurred, true otherwise.
+   */
+  bool take_turn_();
+
   bool enabled_;                 // Whether the cobot is enabled or not.
   float max_speed_;              // The maximum speed of the cobot in m/s.
   std::string state_msg_;        // The state of the cobot to be displayed in the GUI.
@@ -202,6 +257,9 @@ private:
   std::unique_ptr<chess_player_params::Params> params_;
 
   std::shared_ptr<rclcpp::Publisher<chess_msgs::msg::CobotState>> cobot_state_pub_;
+
+  rclcpp::CallbackGroup::SharedPtr reentrant_cb_group_;
+  rclcpp::CallbackGroup::SharedPtr move_cb_group_;
 
   std::shared_ptr<rclcpp::Subscription<sensor_msgs::msg::PointCloud2>> tof_pieces_sub_;
   std::shared_ptr<rclcpp::Subscription<chess_msgs::msg::FullFEN>> game_state_sub_;
