@@ -188,6 +188,11 @@ const vector<Point>& ChessPlayerNode::tof_pieces() const
   return last_tof_pieces_;
 }
 
+const string& ChessPlayerNode::get_tof_frame_id() const
+{
+  return tof_frame_id_;
+}
+
 uint32_t ChessPlayerNode::get_time_left(Side color) const
 {
   return color == Side::White ? white_time_left_ : black_time_left_;
@@ -237,6 +242,9 @@ void ChessPlayerNode::tof_pieces_callback_(const sensor_msgs::msg::PointCloud2::
   for (; iter_x != iter_x.end(); ++iter_x) {
     last_tof_pieces_.emplace_back(Point{ iter_x[0], iter_x[1], iter_x[2] });
   }
+
+  // Update the frame ID.
+  tof_frame_id_ = msg->header.frame_id;
 }
 
 void ChessPlayerNode::game_state_callback_(const chess_msgs::msg::FullFEN::SharedPtr msg)

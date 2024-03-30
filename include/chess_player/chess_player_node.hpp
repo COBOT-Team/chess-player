@@ -139,6 +139,13 @@ public:
   const std::vector<Point>& tof_pieces() const;
 
   /**
+   * Get the frame ID of the TOF camera.
+   * 
+   * @return The frame id.
+   */
+  const std::string& get_tof_frame_id() const;
+
+  /**
    * Get the time remaining for a specific color.
    *
    * @param color The color to get the time for.
@@ -247,6 +254,7 @@ private:
   libchess::Position position_;  // The current position of the chess board.
 
   std::vector<Point> last_tof_pieces_;  // Last detected pieces from the ToF camera.
+  std::string tof_frame_id_;            // Frame ID of the TOF camera.
   std::string game_fen_;                // Current game state in FEN notation.
   uint32_t white_time_left_;            // White player's time left in milliseconds.
   uint32_t black_time_left_;            // Black player's time left in milliseconds.

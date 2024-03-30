@@ -177,8 +177,50 @@ Result move_above_square(ChessPlayerNode& chess_player, const libchess::Square& 
 
 Result align_to_piece(ChessPlayerNode& chess_player)
 {
-  // TODO: Implement this function.
-  return Result::OK;
+  if (chess_player.tof_pieces().empty()) {
+    RCLCPP_WARN(chess_player.get_logger(), "No pieces detected; not aligning");
+    return Result::OK;
+  }
+
+  // Find the point nearest to the center of the TOF camera.
+  const auto [nearest_piece_dist, nearest_piece] = [&chess_player] {
+    double min_dist = numeric_limits<double>::infinity();
+    Point nearest_piece;
+    for (auto& piece : chess_player.tof_pieces()) {
+      const auto dist = piece.x * piece.x + piece.y * piece.y;
+      if (dist < min_dist) {
+        min_dist = dist;
+        nearest_piece = piece;
+      }
+    }
+
+    return make_pair(min_dist, nearest_piece);
+  }();
+
+  // If we're already close enough, don't bother realigning.
+  if (nearest_piece_dist < chess_player.get_params().measurements.min_realign_dist)
+    return Result::OK;
+
+  // Move above the piece.
+  const auto new_pose = [&] {
+    Pose pose_tof_frame;
+    tf2::Quaternion q;
+    q.setRPY(0, M_PI, 0);
+    pose_tof_frame.position.x = nearest_piece.x;
+    pose_tof_frame.position.y = nearest_piece.y;
+    pose_tof_frame.position.z = nearest_piece.z + 0.2;
+    pose_tof_frame.orientation = tf2::toMsg(q);
+
+    const string tof_frame = chess_player.get_tof_frame_id();
+    const string planning_frame = chess_player.main_move_group->getPlanningFrame();
+    const auto transform =
+        chess_player.tf_buffer->lookupTransform(planning_frame, tof_frame, tf2::TimePointZero);
+
+    Pose pose_planning_frame;
+    tf2::doTransform(pose_tof_frame, pose_planning_frame, transform);
+    return pose_planning_frame;
+  }();
+  return move_to_pose(chess_player, new_pose);
 }
 
 /**
