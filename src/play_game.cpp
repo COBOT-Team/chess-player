@@ -53,6 +53,8 @@ Result ChessPlayerNode::find_best_move_()
                             move.move.c_str());
   best_move = move;
 
+  this_thread::sleep_for(5000ms);
+
   return Result::OK;
 }
 

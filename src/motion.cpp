@@ -10,6 +10,7 @@ using namespace std;
 
 using geometry_msgs::msg::Pose;
 using geometry_msgs::msg::Transform;
+using moveit::planning_interface::MoveGroupInterfacePtr;
 
 //                                                                                                //
 // ===================================== Utility Functions ====================================== //
@@ -164,6 +165,40 @@ Result move_to_pose_cartesian(ChessPlayerNode& chess_player, const Pose& pose)
   }
 }
 
+Result move_to_named_pose(ChessPlayerNode& chess_player, MoveGroupInterfacePtr move_group,
+                          string target)
+{
+  move_group->setNamedTarget(target);
+  const auto result = move_group->move();
+  switch (result.val) {
+    case moveit::core::MoveItErrorCode::SUCCESS:
+    case moveit::core::MoveItErrorCode::TIMED_OUT:
+    case moveit::core::MoveItErrorCode::CONTROL_FAILED:
+      return Result::OK;
+    default:
+      RCLCPP_ERROR(chess_player.get_logger(), "Failed to move to named pose '%s': %s",
+                   target.c_str(), moveit::core::error_code_to_string(result).c_str());
+      return Result::ERR_FATAL;
+  }
+}
+
+Result move_to_named_pose_async(ChessPlayerNode& chess_player, MoveGroupInterfacePtr move_group,
+                                string target)
+{
+  move_group->setNamedTarget(target);
+  const auto result = move_group->asyncMove();
+  switch (result.val) {
+    case moveit::core::MoveItErrorCode::SUCCESS:
+    case moveit::core::MoveItErrorCode::TIMED_OUT:
+    case moveit::core::MoveItErrorCode::CONTROL_FAILED:
+      return Result::OK;
+    default:
+      RCLCPP_ERROR(chess_player.get_logger(), "Failed to move to named pose '%s': %s",
+                   target.c_str(), moveit::core::error_code_to_string(result).c_str());
+      return Result::ERR_FATAL;
+  }
+}
+
 //                                                                                                //
 // ===================================== Motion Components ====================================== //
 //                                                                                                //
@@ -177,50 +212,65 @@ Result move_above_square(ChessPlayerNode& chess_player, const libchess::Square& 
 
 Result align_to_piece(ChessPlayerNode& chess_player)
 {
-  if (chess_player.tof_pieces().empty()) {
-    RCLCPP_WARN(chess_player.get_logger(), "No pieces detected; not aligning");
-    return Result::OK;
-  }
 
-  // Find the point nearest to the center of the TOF camera.
-  const auto [nearest_piece_dist, nearest_piece] = [&chess_player] {
-    double min_dist = numeric_limits<double>::infinity();
-    Point nearest_piece;
-    for (auto& piece : chess_player.tof_pieces()) {
-      const auto dist = piece.x * piece.x + piece.y * piece.y;
-      if (dist < min_dist) {
-        min_dist = dist;
-        nearest_piece = piece;
-      }
+  // TODO: https://moveit.picknik.ai/main/doc/examples/realtime_servo/realtime_servo_tutorial.html
+
+  for (int k = 0; k < 5; ++k) {
+    for (int i = 0; i < 10; ++i) {
+      if (!chess_player.tof_pieces().empty()) break;
+      this_thread::sleep_for(5ms);
+    }
+    if (chess_player.tof_pieces().empty()) {
+      RCLCPP_WARN(chess_player.get_logger(), "No pieces detected; not aligning");
+      return Result::OK;
     }
 
-    return make_pair(min_dist, nearest_piece);
-  }();
+    // Find the point nearest to the center of the TOF camera.
+    const auto [nearest_piece_dist, nearest_piece] = [&chess_player] {
+      double min_dist = numeric_limits<double>::infinity();
+      Point nearest_piece;
+      for (auto& piece : chess_player.tof_pieces()) {
+        const auto dist = piece.x * piece.x + piece.y * piece.y;
+        if (dist < min_dist) {
+          min_dist = dist;
+          nearest_piece = piece;
+        }
+      }
 
-  // If we're already close enough, don't bother realigning.
-  if (nearest_piece_dist < chess_player.get_params().measurements.min_realign_dist)
-    return Result::OK;
+      return make_pair(min_dist, nearest_piece);
+    }();
+    RCLCPP_INFO(chess_player.get_logger(), "Found piece with offset of (%0.2f, %0.2f, %0.2f)",
+                nearest_piece.x, nearest_piece.y, nearest_piece.z);
 
-  // Move above the piece.
-  const auto new_pose = [&] {
-    Pose pose_tof_frame;
-    tf2::Quaternion q;
-    q.setRPY(0, M_PI, 0);
-    pose_tof_frame.position.x = nearest_piece.x;
-    pose_tof_frame.position.y = nearest_piece.y;
-    pose_tof_frame.position.z = nearest_piece.z + 0.2;
-    pose_tof_frame.orientation = tf2::toMsg(q);
+    // If we're already close enough, don't bother realigning.
+    static const auto min_realign_dist = chess_player.get_params().measurements.min_realign_dist;
+    if (nearest_piece_dist < min_realign_dist * min_realign_dist) return Result::OK;
 
-    const string tof_frame = chess_player.get_tof_frame_id();
-    const string planning_frame = chess_player.main_move_group->getPlanningFrame();
-    const auto transform =
-        chess_player.tf_buffer->lookupTransform(planning_frame, tof_frame, tf2::TimePointZero);
+    // Move above the piece.
+    const auto current_pose = chess_player.main_move_group->getCurrentPose().pose;
+    RCLCPP_INFO(chess_player.get_logger(), "Aligning to piece");
+    const auto new_pose = [&] {
+      Pose pose_tof_frame;
+      pose_tof_frame.position.x = nearest_piece.x * 0.5;
+      pose_tof_frame.position.y = nearest_piece.y * 0.5;
+      pose_tof_frame.position.z = nearest_piece.z;
+      pose_tof_frame.orientation.w = 1;
 
-    Pose pose_planning_frame;
-    tf2::doTransform(pose_tof_frame, pose_planning_frame, transform);
-    return pose_planning_frame;
-  }();
-  return move_to_pose(chess_player, new_pose);
+      const string tof_frame = chess_player.get_tof_frame_id();
+      const string planning_frame = chess_player.main_move_group->getPlanningFrame();
+      const auto transform =
+          chess_player.tf_buffer->lookupTransform(planning_frame, tof_frame, tf2::TimePointZero);
+
+      Pose pose_planning_frame;
+      tf2::doTransform(pose_tof_frame, pose_planning_frame, transform);
+      pose_planning_frame.orientation = current_pose.orientation;
+      pose_planning_frame.position.z = current_pose.position.z;
+      return pose_planning_frame;
+    }();
+    const auto result = move_to_pose(chess_player, new_pose);
+    if (result != Result::OK) return result;
+  }
+  return Result::OK;
 }
 
 /**
@@ -232,12 +282,18 @@ Result align_to_piece(ChessPlayerNode& chess_player)
  */
 Result pick_up_piece(ChessPlayerNode& chess_player, const libchess::Square& square)
 {
+  // Open the gripper.
+  {
+    const auto result =
+        move_to_named_pose_async(chess_player, chess_player.gripper_move_group, "open");
+    if (result != Result::OK) return result;
+  }
+
   // Move the gripper above the square.
   {
     const auto result = move_above_square(chess_player, square);
     if (result != Result::OK) return result;
   }
-
   // Align the cobot with the piece.
   {
     const auto result = align_to_piece(chess_player);
@@ -272,11 +328,8 @@ Result pick_up_piece(ChessPlayerNode& chess_player, const libchess::Square& squa
 
   // Close the gripper.
   {
-    chess_player.gripper_move_group->setNamedTarget("close");
-    if (!chess_player.gripper_move_group->move()) {
-      RCLCPP_ERROR(chess_player.node->get_logger(), "Failed to close gripper");
-      return Result::ERR_RETRY;
-    }
+    const auto result = move_to_named_pose(chess_player, chess_player.gripper_move_group, "close");
+    if (result != Result::OK) return result;
   }
 
   // Move the end effector back up.
@@ -320,7 +373,7 @@ Result place_piece(ChessPlayerNode& chess_player, const libchess::Square& square
   {
     const auto down_pose = [&] {
       auto pose = pose_at_square;
-      pose.position.z += chess_player.get_params().measurements.min_grasp_height;
+      pose.position.z += chess_player.get_params().measurements.min_grasp_height + 0.0075;
       return pose;
     }();
     const auto result = move_to_pose_cartesian(chess_player, down_pose);
@@ -329,11 +382,8 @@ Result place_piece(ChessPlayerNode& chess_player, const libchess::Square& square
 
   // Open the gripper.
   {
-    chess_player.gripper_move_group->setNamedTarget("open");
-    if (!chess_player.gripper_move_group->move()) {
-      RCLCPP_ERROR(chess_player.node->get_logger(), "Failed to open gripper");
-      return Result::ERR_RETRY;
-    }
+    const auto result = move_to_named_pose(chess_player, chess_player.gripper_move_group, "open");
+    if (result != Result::OK) return result;
   }
 
   // Move the end effector back up.
@@ -365,10 +415,9 @@ Result deposit_captured_piece(ChessPlayerNode& chess_player)
   }
 
   // Move the gripper to the deposit location.
-  chess_player.main_move_group->setNamedTarget("deposit");
-  if (!chess_player.main_move_group->move()) {
-    RCLCPP_ERROR(chess_player.node->get_logger(), "Failed to move to deposit location");
-    return Result::ERR_RETRY;
+  {
+    const auto result = move_to_named_pose(chess_player, chess_player.main_move_group, "deposit");
+    if (result != Result::OK) return result;
   }
 
   // Make sure the cobot isn't disabled.
@@ -378,10 +427,9 @@ Result deposit_captured_piece(ChessPlayerNode& chess_player)
   }
 
   // Open the gripper.
-  chess_player.gripper_move_group->setNamedTarget("open");
-  if (!chess_player.gripper_move_group->move()) {
-    RCLCPP_ERROR(chess_player.node->get_logger(), "Failed to open gripper");
-    return Result::ERR_RETRY;
+  {
+    const auto result = move_to_named_pose(chess_player, chess_player.gripper_move_group, "open");
+    if (result != Result::OK) return result;
   }
 
   return Result::OK;
@@ -459,11 +507,16 @@ Result ChessPlayerNode::hit_clock_()
     return Result::ERR_FATAL;
   }
 
+  // Close the gripper.
+  {
+    const auto result = move_to_named_pose_async(*this, gripper_move_group, "close");
+    if (result != Result::OK) return result;
+  }
+
   // Move the gripper to the clock location.
-  main_move_group->setNamedTarget("above_clock");
-  if (!main_move_group->move()) {
-    RCLCPP_ERROR(node->get_logger(), "Failed to move to clock location");
-    return Result::ERR_RETRY;
+  {
+    const auto result = move_to_named_pose(*this, main_move_group, "above_clock");
+    if (result != Result::OK) return result;
   }
 
   // Make sure the cobot isn't disabled.
@@ -473,10 +526,9 @@ Result ChessPlayerNode::hit_clock_()
   }
 
   // Press the clock.
-  gripper_move_group->setNamedTarget("press_clock");
-  if (!gripper_move_group->move()) {
-    RCLCPP_ERROR(node->get_logger(), "Failed to press clock");
-    return Result::ERR_RETRY;
+  {
+    const auto result = move_to_named_pose(*this, main_move_group, "press_clock");
+    if (result != Result::OK) return result;
   }
 
   // Make sure the cobot isn't disabled.
@@ -486,10 +538,9 @@ Result ChessPlayerNode::hit_clock_()
   }
 
   // Move the gripper back up.
-  gripper_move_group->setNamedTarget("above_clock");
-  if (!gripper_move_group->move()) {
-    RCLCPP_ERROR(node->get_logger(), "Failed to move back up");
-    return Result::ERR_RETRY;
+  {
+    const auto result = move_to_named_pose(*this, main_move_group, "above_clock");
+    if (result != Result::OK) return result;
   }
 
   return Result::OK;
@@ -503,10 +554,9 @@ Result ChessPlayerNode::move_home_()
     return Result::ERR_FATAL;
   }
 
-  main_move_group->setNamedTarget("home");
-  if (!main_move_group->move()) {
-    RCLCPP_ERROR(node->get_logger(), "Failed to move to home location");
-    return Result::ERR_RETRY;
+  {
+    const auto result = move_to_named_pose(*this, main_move_group, "home");
+    if (result != Result::OK) return result;
   }
 
   return Result::OK;
@@ -514,11 +564,5 @@ Result ChessPlayerNode::move_home_()
 
 Result ChessPlayerNode::move_out_of_way_()
 {
-  main_move_group->setNamedTarget("out_of_way");
-  if (!main_move_group->move()) {
-    RCLCPP_ERROR(node->get_logger(), "Failed to move out of the way");
-    return Result::ERR_RETRY;
-  }
-
-  return Result::OK;
+  return move_to_named_pose(*this, main_move_group, "out_of_way");
 }
