@@ -215,7 +215,10 @@ Result align_to_piece(ChessPlayerNode& chess_player)
 
   // TODO: https://moveit.picknik.ai/main/doc/examples/realtime_servo/realtime_servo_tutorial.html
 
+  this_thread::sleep_for(150ms);
+
   for (int k = 0; k < 5; ++k) {
+  this_thread::sleep_for(100ms);
     for (int i = 0; i < 10; ++i) {
       if (!chess_player.tof_pieces().empty()) break;
       this_thread::sleep_for(5ms);
@@ -251,8 +254,8 @@ Result align_to_piece(ChessPlayerNode& chess_player)
     RCLCPP_INFO(chess_player.get_logger(), "Aligning to piece");
     const auto new_pose = [&] {
       Pose pose_tof_frame;
-      pose_tof_frame.position.x = nearest_piece.x * 0.5;
-      pose_tof_frame.position.y = nearest_piece.y * 0.5;
+      pose_tof_frame.position.x = nearest_piece.x;
+      pose_tof_frame.position.y = nearest_piece.y;
       pose_tof_frame.position.z = nearest_piece.z;
       pose_tof_frame.orientation.w = 1;
 
