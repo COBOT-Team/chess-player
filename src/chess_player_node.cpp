@@ -58,10 +58,46 @@ ChessPlayerNode::ChessPlayerNode(string nodename)
   tf_buffer = make_shared<tf2_ros::Buffer>(node->get_clock());
   tf_listener_ = make_shared<tf2_ros::TransformListener>(*tf_buffer);
 
+  // Init planning scene monitor.
+  std::make_shared<planning_scene_monitor::PlanningSceneMonitor>(
+      node_, "robot_description", tf_buffer, "planning_scene_monitor");
+  if (planning_scene_monitor_->getPlanningScene()) {
+    planning_scene_monitor_->startStateMonitor("/joint_states");
+    planning_scene_monitor_->setPlanningScenePublishingFrequency(25);
+    planning_scene_monitor_->startPublishingPlanningScene(
+        planning_scene_monitor::PlanningSceneMonitor::UPDATE_SCENE,
+        "/moveit_servo/publish_planning_scene");
+    planning_scene_monitor_->startSceneMonitor();
+    planning_scene_monitor_->providePlanningSceneService();
+  } else {
+    RCLCPP_ERROR(node_->get_logger(), "Planning scene not configured");
+  }
+
   // Init publishers.
   string prefix = params_->cobot_ns.empty() ? "" : params_->cobot_ns + "/";
   cobot_state_pub_ =
       node->create_publisher<chess_msgs::msg::CobotState>(prefix + params_->pub_topics.state, 10);
+  servo_twist_cmd_pub =
+      node_->create_publisher<geometry_msgs::msg::TwistStamped>("~/delta_twist_cmds", 10);
+
+  // Init servo.
+  const auto servo_parameters = [&] {
+    const auto planning_frame = main_move_group->getPlanningFrame();
+    auto params = moveit_servo::ServoParameters::makeServoParameters(node_);
+    params->robot_link_command_frame = planning_frame;
+    params->command_in_type = "speed_units";
+    params->command_out_topic = params_->cobot_ns + "_controller/joint_trajectory";
+    params->move_group_name = main_move_group->getName();
+    params->planning_frame = planning_frame;
+    return params;
+  }();
+  if (!servo_parameters) {
+    RCLCPP_FATAL(LOGGER, "Failed to load the servo parameters");
+    return EXIT_FAILURE;
+  }
+  servo = make_unique<moveit_servo::Servo>(node_, servo_parameters, planning_scene_monitor_);
+  servo->start();
+  servo->setPaused(true);
 
   // Init callback groups.
   reentrant_cb_group_ = node->create_callback_group(rclcpp::CallbackGroupType::Reentrant);

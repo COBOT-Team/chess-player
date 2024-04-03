@@ -2,6 +2,8 @@
 #define CHESS_PLAYER_NODE__CHESS_PLAYER_HPP_
 
 #include <moveit/move_group_interface/move_group_interface.h>
+#include <moveit/planning_scene_monitor/planning_scene_monitor.h>
+#include <moveit_servo/servo.h>
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
 
@@ -13,6 +15,7 @@
 #include <chess_msgs/msg/cobot_state.hpp>
 #include <chess_msgs/msg/full_fen.hpp>
 #include <chess_player_params.hpp>
+#include <geometry_msgs/msg/twist_stamped.hpp>
 #include <libchess/position.hpp>
 #include <mutex>
 #include <rclcpp/rclcpp.hpp>
@@ -69,6 +72,12 @@ public:
 
   // Transform buffer for the TF listener.
   std::shared_ptr<tf2_ros::Buffer> tf_buffer;
+
+  // Servo used for realtime servoing.
+  std::unique_ptr<moveit_servo::Servo> servo;
+  
+  // Twist publisher for servoing.
+  rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr servo_twist_cmd_pub;
 
   /**
    * Construct a new Chess Player Node object.
@@ -140,7 +149,7 @@ public:
 
   /**
    * Get the frame ID of the TOF camera.
-   * 
+   *
    * @return The frame id.
    */
   const std::string& get_tof_frame_id() const;
@@ -264,7 +273,9 @@ private:
   std::unique_ptr<chess_player_params::ParamListener> param_listener_;
   std::unique_ptr<chess_player_params::Params> params_;
 
-  std::shared_ptr<rclcpp::Publisher<chess_msgs::msg::CobotState>> cobot_state_pub_;
+  rclcpp::Publisher<chess_msgs::msg::CobotState>::SharedPtr cobot_state_pub_;
+
+  std::shared_ptr<planning_scene_monitor::PlanningSceneMonitor> planning_scene_monitor_;
 
   rclcpp::CallbackGroup::SharedPtr reentrant_cb_group_;
   rclcpp::CallbackGroup::SharedPtr move_cb_group_;

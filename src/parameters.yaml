@@ -15,6 +15,38 @@ chess_player_params:
       validation: { one_of<>: [["white", "black"]] },
     }
 
+  align_params:
+    x_weight:
+      {
+        type: double,
+        default_value: 2.0,
+        description: "The weight that translates X error (in meters) into X velocity",
+      }
+    y_weight:
+      {
+        type: double,
+        default_value: 2.0,
+        description: "The weight that translates Y error (in meters) into Y velocity",
+      }
+    z_weight:
+      {
+        type: double,
+        default_value: 2.0,
+        description: "The weight that translates Z error (in meters) into Z velocity",
+      }
+    z_min:
+      {
+        type: double,
+        default_value: -0.04,
+        description: "The minimum Z value of the gripper when aligning (relative to hover_above_board)."
+      }
+    z_max:
+      {
+        type: double,
+        default_value: 0.04,
+        description: "The maximum Z value of the gripper when aligning (relative to hover_above_board)."
+      }
+
   move_groups:
     cobot:
       {
