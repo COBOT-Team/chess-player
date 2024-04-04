@@ -41,25 +41,25 @@ chess_player_params:
     chessboard_square_size:
       {
         type: double,
-        default_value: 0.035,
+        default_value: 0.04143,
         description: "The size of each square on the chessboard in meters.",
       }
     hover_above_board:
       {
         type: double,
-        default_value: 0.32,
+        default_value: 0.35,
         description: "The height to hover above the board in meters.",
       }
     min_grasp_height:
       {
         type: double,
-        default_value: 0.215,
+        default_value: 0.23,
         description: "The minimum height for the gripper to go to in order to pick up a piece.",
       }
     pick_up_height:
       {
         type: double,
-        default_value: 0.35,
+        default_value: 0.36,
         description: "The height to raise a piece to after picking it up.",
       }
     min_realign_dist:

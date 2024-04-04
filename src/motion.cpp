@@ -50,6 +50,8 @@ Pose get_pose_over_square(ChessPlayerNode& chess_player, const libchess::Square&
 
     return p;
   }();
+  RCLCPP_INFO(chess_player.get_logger(), "Pose relative to chessboard: (%0.4f, %0.4f, %0.4f)",
+              pose.position.x, pose.position.y, pose.position.z);
 
   // Transform the pose to the planning frame.
   const auto base_link_pose = [&] {
@@ -62,6 +64,8 @@ Pose get_pose_over_square(ChessPlayerNode& chess_player, const libchess::Square&
     tf2::doTransform(pose, base_link_pose, transform);
     return base_link_pose;
   }();
+  RCLCPP_INFO(chess_player.get_logger(), "Pose relative to base link: (%0.4f, %0.4f, %0.4f)",
+              base_link_pose.position.x, base_link_pose.position.y, base_link_pose.position.z);
 
   return base_link_pose;
 }
@@ -105,6 +109,7 @@ Result move_to_pose(ChessPlayerNode& chess_player, const Pose& pose)
   }
 
   // Execute the motion.
+  RCLCPP_INFO(chess_player.get_logger(), "EXECUTING");
   const auto execute_result = chess_player.main_move_group->execute(plan);
   switch (execute_result.val) {
     case moveit::core::MoveItErrorCode::SUCCESS:
@@ -212,13 +217,12 @@ Result move_above_square(ChessPlayerNode& chess_player, const libchess::Square& 
 
 Result align_to_piece(ChessPlayerNode& chess_player)
 {
-
   // TODO: https://moveit.picknik.ai/main/doc/examples/realtime_servo/realtime_servo_tutorial.html
 
   this_thread::sleep_for(150ms);
 
   for (int k = 0; k < 5; ++k) {
-  this_thread::sleep_for(100ms);
+    this_thread::sleep_for(100ms);
     for (int i = 0; i < 10; ++i) {
       if (!chess_player.tof_pieces().empty()) break;
       this_thread::sleep_for(5ms);
@@ -288,7 +292,7 @@ Result pick_up_piece(ChessPlayerNode& chess_player, const libchess::Square& squa
   // Open the gripper.
   {
     const auto result =
-        move_to_named_pose_async(chess_player, chess_player.gripper_move_group, "open");
+        move_to_named_pose(chess_player, chess_player.gripper_move_group, "open");
     if (result != Result::OK) return result;
   }
 
@@ -512,7 +516,7 @@ Result ChessPlayerNode::hit_clock_()
 
   // Close the gripper.
   {
-    const auto result = move_to_named_pose_async(*this, gripper_move_group, "close");
+    const auto result = move_to_named_pose(*this, gripper_move_group, "close");
     if (result != Result::OK) return result;
   }
 
