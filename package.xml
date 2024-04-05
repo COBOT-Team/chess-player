@@ -10,6 +10,7 @@
   <depend>ament_cmake</depend>
   <depend>generate_parameter_library</depend>
   <depend>moveit_ros_planning_interface</depend>
+  <depend>moveit_servo</depend>
   <depend>chess_msgs</depend>
   <depend>sensor_msgs</depend>
   <depend>rclcpp_action</depend>

@@ -9,6 +9,7 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(generate_parameter_library REQUIRED)
 find_package(moveit_ros_planning_interface REQUIRED)
+find_package(moveit_servo REQUIRED)
 find_package(chess_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(rclcpp_action REQUIRED)
@@ -36,6 +37,7 @@ target_compile_features(chess_player PUBLIC c_std_99 cxx_std_20)  # Require C99 
 
 ament_target_dependencies(chess_player PUBLIC
   moveit_ros_planning_interface
+  moveit_servo
   chess_msgs
   sensor_msgs
   rclcpp_action

@@ -217,23 +217,31 @@ Result move_above_square(ChessPlayerNode& chess_player, const libchess::Square& 
 
 Result align_to_piece(ChessPlayerNode& chess_player)
 {
-  // TODO: https://moveit.picknik.ai/main/doc/examples/realtime_servo/realtime_servo_tutorial.html
+  RCLCPP_INFO(chess_player.get_logger(), "Aligning");
+  this_thread::sleep_for(250ms);
+  double nearest_piece_dist = numeric_limits<double>::infinity();
+  const auto params = chess_player.get_params();
+  chess_player.main_move_group->stop();
+  double error_x = 0;
+  double error_y = 0;
+  double error_z = 0;
+  do {
+    // Get current Z of gripper.
+    const auto gripper_z = chess_player.main_move_group->getCurrentPose().pose.position.z;
 
-  this_thread::sleep_for(150ms);
-
-  for (int k = 0; k < 5; ++k) {
-    this_thread::sleep_for(100ms);
+    // Wait up to 50ms to get pieces.
+    this_thread::sleep_for(5ms);
     for (int i = 0; i < 10; ++i) {
       if (!chess_player.tof_pieces().empty()) break;
       this_thread::sleep_for(5ms);
     }
     if (chess_player.tof_pieces().empty()) {
       RCLCPP_WARN(chess_player.get_logger(), "No pieces detected; not aligning");
-      return Result::OK;
+      break;
     }
 
     // Find the point nearest to the center of the TOF camera.
-    const auto [nearest_piece_dist, nearest_piece] = [&chess_player] {
+    const auto [dist, nearest_piece] = [&chess_player] {
       double min_dist = numeric_limits<double>::infinity();
       Point nearest_piece;
       for (auto& piece : chess_player.tof_pieces()) {
@@ -243,40 +251,57 @@ Result align_to_piece(ChessPlayerNode& chess_player)
           nearest_piece = piece;
         }
       }
-
       return make_pair(min_dist, nearest_piece);
     }();
-    RCLCPP_INFO(chess_player.get_logger(), "Found piece with offset of (%0.2f, %0.2f, %0.2f)",
-                nearest_piece.x, nearest_piece.y, nearest_piece.z);
+    nearest_piece_dist = dist;
 
-    // If we're already close enough, don't bother realigning.
-    static const auto min_realign_dist = chess_player.get_params().measurements.min_realign_dist;
-    if (nearest_piece_dist < min_realign_dist * min_realign_dist) return Result::OK;
+    // Servo.
+    const auto twist_cmd = [&] {
+      const auto x_weight = params.align_params.x_weight;
+      const auto y_weight = params.align_params.y_weight;
+      const auto z_weight = params.align_params.z_weight;
+      const auto z_min = params.measurements.hover_above_board + params.align_params.z_min;
+      const auto z_max = params.measurements.hover_above_board + params.align_params.z_max;
+      const auto z_scale_neutral_point = params.measurements.min_realign_dist * 10.0;
+      const auto z_scale = params.align_params.z_min / z_scale_neutral_point;
 
-    // Move above the piece.
-    const auto current_pose = chess_player.main_move_group->getCurrentPose().pose;
-    RCLCPP_INFO(chess_player.get_logger(), "Aligning to piece");
-    const auto new_pose = [&] {
-      Pose pose_tof_frame;
-      pose_tof_frame.position.x = nearest_piece.x;
-      pose_tof_frame.position.y = nearest_piece.y;
-      pose_tof_frame.position.z = nearest_piece.z;
-      pose_tof_frame.orientation.w = 1;
+      // We determine the target Z position of the gripper based linearly on the piece's XY distance
+      // to the gripper's center. If the piece is far away, we raise the gripper to get a better
+      // view. If the piece is near the center, we zoom in to get a more precise measurement.
+      double target_z =
+          z_scale * (z_scale_neutral_point - dist) + params.measurements.hover_above_board;
+      if (target_z < z_min) target_z = z_min;
+      if (target_z > z_max) target_z = z_max;
 
-      const string tof_frame = chess_player.get_tof_frame_id();
-      const string planning_frame = chess_player.main_move_group->getPlanningFrame();
-      const auto transform =
-          chess_player.tf_buffer->lookupTransform(planning_frame, tof_frame, tf2::TimePointZero);
+      error_x = nearest_piece.x;
+      error_y = nearest_piece.y;
+      error_z = target_z - gripper_z;
 
-      Pose pose_planning_frame;
-      tf2::doTransform(pose_tof_frame, pose_planning_frame, transform);
-      pose_planning_frame.orientation = current_pose.orientation;
-      pose_planning_frame.position.z = current_pose.position.z;
-      return pose_planning_frame;
+      double x_cmd = x_weight * error_x;
+      if (x_cmd < -params.align_params.max_speed) x_cmd = -params.align_params.max_speed;
+      if (x_cmd > params.align_params.max_speed) x_cmd = params.align_params.max_speed;
+      double y_cmd = -y_weight * error_y;
+      if (y_cmd < -params.align_params.max_speed) y_cmd = -params.align_params.max_speed;
+      if (y_cmd > params.align_params.max_speed) y_cmd = params.align_params.max_speed;
+      double z_cmd = -z_weight * error_z;
+      if (z_cmd < -params.align_params.max_speed) z_cmd = -params.align_params.max_speed;
+      if (z_cmd > params.align_params.max_speed) z_cmd = params.align_params.max_speed;
+
+      geometry_msgs::msg::TwistStamped msg;
+      msg.header.stamp = chess_player.node->now();
+      msg.header.frame_id = "cobot0_link_5";
+      msg.twist.linear.x = x_cmd;
+      msg.twist.linear.y = y_cmd;
+      msg.twist.linear.z = z_cmd;
+
+      return msg;
     }();
-    const auto result = move_to_pose(chess_player, new_pose);
-    if (result != Result::OK) return result;
-  }
+    RCLCPP_INFO(chess_player.get_logger(), "Error %0.5f, %0.5f, %0.5f", error_x, error_y, error_z);
+    chess_player.servo_twist_cmd_pub->publish(twist_cmd);
+
+  } while (nearest_piece_dist > params.measurements.min_realign_dist || abs(error_z) > 0.005);
+  RCLCPP_INFO(chess_player.get_logger(), "Aligned");
+
   return Result::OK;
 }
 
@@ -291,8 +316,7 @@ Result pick_up_piece(ChessPlayerNode& chess_player, const libchess::Square& squa
 {
   // Open the gripper.
   {
-    const auto result =
-        move_to_named_pose(chess_player, chess_player.gripper_move_group, "open");
+    const auto result = move_to_named_pose(chess_player, chess_player.gripper_move_group, "open");
     if (result != Result::OK) return result;
   }
 

@@ -15,6 +15,44 @@ chess_player_params:
       validation: { one_of<>: [["white", "black"]] },
     }
 
+  align_params:
+    x_weight:
+      {
+        type: double,
+        default_value: 0.1,
+        description: "The weight that translates X error (in meters) into X velocity",
+      }
+    y_weight:
+      {
+        type: double,
+        default_value: 0.1,
+        description: "The weight that translates Y error (in meters) into Y velocity",
+      }
+    z_weight:
+      {
+        type: double,
+        default_value: 100,
+        description: "The weight that translates Z error (in meters) into Z velocity",
+      }
+    z_min:
+      {
+        type: double,
+        default_value: -0.05,
+        description: "The minimum Z value of the gripper when aligning (relative to hover_above_board)."
+      }
+    z_max:
+      {
+        type: double,
+        default_value: 0.08,
+        description: "The maximum Z value of the gripper when aligning (relative to hover_above_board)."
+      }
+    max_speed:
+      {
+        type: double,
+        default_value: 0.08,
+        description: "The maximum speed in each axis."
+      }
+
   move_groups:
     cobot:
       {
@@ -65,7 +103,7 @@ chess_player_params:
     min_realign_dist:
       {
         type: double,
-        default_value: 0.005,
+        default_value: 50,
         description: "The minimum distance away a chess piece must be in order to realign to it."
       }
 
@@ -81,7 +119,7 @@ chess_player_params:
     tof_points:
       {
         type: string,
-        default_value: "tof/pieces/points",
+        default_value: "tof/pieces/camera_points",
         description:
           "The topic to subscribe to for the TOF's points. Each point represents a chess piece.",
       }

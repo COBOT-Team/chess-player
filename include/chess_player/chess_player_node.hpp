@@ -2,10 +2,13 @@
 #define CHESS_PLAYER_NODE__CHESS_PLAYER_HPP_
 
 #include <moveit/move_group_interface/move_group_interface.h>
+#include <moveit/planning_scene_monitor/planning_scene_monitor.h>
+#include <moveit_servo/servo.h>
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
 
 #include <chess_msgs/action/find_best_move.hpp>
+#include <chess_msgs/msg/camera_points.hpp>
 #include <chess_msgs/msg/chess_move_uci.hpp>
 #include <chess_msgs/msg/chess_time.hpp>
 #include <chess_msgs/msg/cobot_enabled.hpp>
@@ -13,6 +16,7 @@
 #include <chess_msgs/msg/cobot_state.hpp>
 #include <chess_msgs/msg/full_fen.hpp>
 #include <chess_player_params.hpp>
+#include <geometry_msgs/msg/twist_stamped.hpp>
 #include <libchess/position.hpp>
 #include <mutex>
 #include <rclcpp/rclcpp.hpp>
@@ -25,9 +29,8 @@
  * A point in 3D space.
  */
 struct Point {
-  float x;
-  float y;
-  float z;
+  int x;
+  int y;
 };
 
 class ChessPlayerNode
@@ -69,6 +72,12 @@ public:
 
   // Transform buffer for the TF listener.
   std::shared_ptr<tf2_ros::Buffer> tf_buffer;
+
+  // Servo used for realtime servoing.
+  std::unique_ptr<moveit_servo::Servo> servo;
+
+  // Twist publisher for servoing.
+  rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr servo_twist_cmd_pub;
 
   /**
    * Construct a new Chess Player Node object.
@@ -139,13 +148,6 @@ public:
   const std::vector<Point>& tof_pieces() const;
 
   /**
-   * Get the frame ID of the TOF camera.
-   * 
-   * @return The frame id.
-   */
-  const std::string& get_tof_frame_id() const;
-
-  /**
    * Get the time remaining for a specific color.
    *
    * @param color The color to get the time for.
@@ -164,7 +166,7 @@ private:
    *
    * @param[in] msg The message containing the point cloud of pieces.
    */
-  void tof_pieces_callback_(const sensor_msgs::msg::PointCloud2::SharedPtr msg);
+  void tof_pieces_callback_(const chess_msgs::msg::CameraPoints::SharedPtr msg);
 
   /**
    * Callback that is called for updates to the game state.
@@ -254,7 +256,6 @@ private:
   libchess::Position position_;  // The current position of the chess board.
 
   std::vector<Point> last_tof_pieces_;  // Last detected pieces from the ToF camera.
-  std::string tof_frame_id_;            // Frame ID of the TOF camera.
   std::string game_fen_;                // Current game state in FEN notation.
   uint32_t white_time_left_;            // White player's time left in milliseconds.
   uint32_t black_time_left_;            // Black player's time left in milliseconds.
@@ -264,12 +265,14 @@ private:
   std::unique_ptr<chess_player_params::ParamListener> param_listener_;
   std::unique_ptr<chess_player_params::Params> params_;
 
-  std::shared_ptr<rclcpp::Publisher<chess_msgs::msg::CobotState>> cobot_state_pub_;
+  rclcpp::Publisher<chess_msgs::msg::CobotState>::SharedPtr cobot_state_pub_;
+
+  std::shared_ptr<planning_scene_monitor::PlanningSceneMonitor> planning_scene_monitor_;
 
   rclcpp::CallbackGroup::SharedPtr reentrant_cb_group_;
   rclcpp::CallbackGroup::SharedPtr move_cb_group_;
 
-  std::shared_ptr<rclcpp::Subscription<sensor_msgs::msg::PointCloud2>> tof_pieces_sub_;
+  std::shared_ptr<rclcpp::Subscription<chess_msgs::msg::CameraPoints>> tof_pieces_sub_;
   std::shared_ptr<rclcpp::Subscription<chess_msgs::msg::FullFEN>> game_state_sub_;
   std::shared_ptr<rclcpp::Subscription<chess_msgs::msg::ChessTime>> time_sub_;
   std::shared_ptr<rclcpp::Subscription<chess_msgs::msg::CobotEnabled>> enabled_sub_;

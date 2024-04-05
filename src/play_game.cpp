@@ -148,24 +148,24 @@ bool ChessPlayerNode::take_turn_()
   if (!move_result) return false;
 
   // Hit the clock.
-  set_state(ChessPlayerNode::State::HITTING_CLOCK);
-  const auto hit_clock_result = [this] {
-    while (1) {
-      const auto result = hit_clock_();
-      switch (result) {
-        case Result::OK:
-          return true;
-        case Result::ERR_RETRY:
-          RCLCPP_WARN(get_logger(), "Failed to hit clock, retrying in 100ms");
-          this_thread::sleep_for(100ms);
-          continue;
-        case Result::ERR_FATAL:
-          RCLCPP_ERROR(get_logger(), "Failed to hit clock, exiting");
-          return false;
-      }
-    }
-  }();
-  if (!hit_clock_result) return false;
+  // set_state(ChessPlayerNode::State::HITTING_CLOCK);
+  // const auto hit_clock_result = [this] {
+  //   while (1) {
+  //     const auto result = hit_clock_();
+  //     switch (result) {
+  //       case Result::OK:
+  //         return true;
+  //       case Result::ERR_RETRY:
+  //         RCLCPP_WARN(get_logger(), "Failed to hit clock, retrying in 100ms");
+  //         this_thread::sleep_for(100ms);
+  //         continue;
+  //       case Result::ERR_FATAL:
+  //         RCLCPP_ERROR(get_logger(), "Failed to hit clock, exiting");
+  //         return false;
+  //     }
+  //   }
+  // }();
+  // if (!hit_clock_result) return false;
 
   // Move to home.
   set_state(ChessPlayerNode::State::MOVING_TO_HOME);

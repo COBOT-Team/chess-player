@@ -58,10 +58,44 @@ ChessPlayerNode::ChessPlayerNode(string nodename)
   tf_buffer = make_shared<tf2_ros::Buffer>(node->get_clock());
   tf_listener_ = make_shared<tf2_ros::TransformListener>(*tf_buffer);
 
+  // Init servo params.
+  // RCLCPP_INFO(get_logger(), "Init servo params");
+  // const auto servo_parameters = moveit_servo::ServoParameters::makeServoParameters(node);
+  // if (!servo_parameters) {
+  //   RCLCPP_FATAL(node->get_logger(), "Failed to load the servo parameters");
+  // }
+
+  // Init planning scene monitor.
+  // RCLCPP_INFO(get_logger(), "Init planning scene monitor");
+  // planning_scene_monitor::PlanningSceneMonitorPtr planning_scene_monitor;
+  // planning_scene_monitor =
+  //     std::make_shared<planning_scene_monitor::PlanningSceneMonitor>(node, "robot_description");
+  // if (!planning_scene_monitor->getPlanningScene()) {
+  //   RCLCPP_ERROR_STREAM(get_logger(), "Error in setting up the PlanningSceneMonitor.");
+  //   exit(EXIT_FAILURE);
+  // }
+  // planning_scene_monitor->providePlanningSceneService();
+  // planning_scene_monitor->startSceneMonitor();
+  // planning_scene_monitor->startWorldGeometryMonitor(
+  //     planning_scene_monitor::PlanningSceneMonitor::DEFAULT_COLLISION_OBJECT_TOPIC,
+  //     planning_scene_monitor::PlanningSceneMonitor::DEFAULT_PLANNING_SCENE_WORLD_TOPIC,
+  //     false /* skip octomap monitor */);
+  // planning_scene_monitor->startStateMonitor(servo_parameters->joint_topic);
+  // planning_scene_monitor->startPublishingPlanningScene(
+  //     planning_scene_monitor::PlanningSceneMonitor::UPDATE_SCENE);
+
   // Init publishers.
+  RCLCPP_INFO(get_logger(), "Init publishers");
   string prefix = params_->cobot_ns.empty() ? "" : params_->cobot_ns + "/";
   cobot_state_pub_ =
       node->create_publisher<chess_msgs::msg::CobotState>(prefix + params_->pub_topics.state, 10);
+  servo_twist_cmd_pub = node->create_publisher<geometry_msgs::msg::TwistStamped>(
+      prefix + "servo/delta_twist_cmds", 10);
+
+  // Init servo.
+  // servo = make_unique<moveit_servo::Servo>(node, servo_parameters, planning_scene_monitor_);
+  // servo->start();
+  // servo->setPaused(true);
 
   // Init callback groups.
   reentrant_cb_group_ = node->create_callback_group(rclcpp::CallbackGroupType::Reentrant);
@@ -72,7 +106,7 @@ ChessPlayerNode::ChessPlayerNode(string nodename)
   move_options.callback_group = move_cb_group_;
 
   // Init subscribers.
-  tof_pieces_sub_ = node->create_subscription<sensor_msgs::msg::PointCloud2>(
+  tof_pieces_sub_ = node->create_subscription<chess_msgs::msg::CameraPoints>(
       params_->sub_topics.tof_points, 10, bind(&ChessPlayerNode::tof_pieces_callback_, this, _1),
       reentrant_options);
   game_state_sub_ = node->create_subscription<chess_msgs::msg::FullFEN>(
@@ -188,11 +222,6 @@ const vector<Point>& ChessPlayerNode::tof_pieces() const
   return last_tof_pieces_;
 }
 
-const string& ChessPlayerNode::get_tof_frame_id() const
-{
-  return tof_frame_id_;
-}
-
 uint32_t ChessPlayerNode::get_time_left(Side color) const
 {
   return color == Side::White ? white_time_left_ : black_time_left_;
@@ -202,49 +231,15 @@ uint32_t ChessPlayerNode::get_time_left(Side color) const
 // ====================================== Topic Callbacks ======================================= //
 //                                                                                                //
 
-void ChessPlayerNode::tof_pieces_callback_(const sensor_msgs::msg::PointCloud2::SharedPtr msg)
+void ChessPlayerNode::tof_pieces_callback_(const chess_msgs::msg::CameraPoints::SharedPtr msg)
 {
-  // Verify format of message.
-  static const array<sensor_msgs::msg::PointField, 3> expected_fields = []() {
-    array<sensor_msgs::msg::PointField, 3> fields;
-    fields[0].name = "x";
-    fields[0].offset = 0;
-    fields[0].datatype = sensor_msgs::msg::PointField::FLOAT32;
-    fields[0].count = 1;
-    fields[1].name = "y";
-    fields[1].offset = 4;
-    fields[1].datatype = sensor_msgs::msg::PointField::FLOAT32;
-    fields[1].count = 1;
-    fields[2].name = "z";
-    fields[2].offset = 8;
-    fields[2].datatype = sensor_msgs::msg::PointField::FLOAT32;
-    fields[2].count = 1;
-    return fields;
-  }();
-  if (msg->fields.size() != expected_fields.size()) {
-    RCLCPP_ERROR(node->get_logger(), "Invalid TOF message format");
-    return;
-  }
-  for (size_t i = 0; i < expected_fields.size(); i++) {
-    if (msg->fields[i].name != expected_fields[i].name ||
-        msg->fields[i].offset != expected_fields[i].offset ||
-        msg->fields[i].datatype != expected_fields[i].datatype ||
-        msg->fields[i].count != expected_fields[i].count) {
-      RCLCPP_ERROR(node->get_logger(), "Invalid TOF message format");
-      return;
-    }
-  }
-
-  // Extract points from message. We iterate over each X field and, since we know that Y and Z come
-  // immediately after X, we can safely index into the iterator to get those fields as well.
   last_tof_pieces_.clear();
-  sensor_msgs::PointCloud2ConstIterator<float> iter_x(*msg, "x");
-  for (; iter_x != iter_x.end(); ++iter_x) {
-    last_tof_pieces_.emplace_back(Point{ iter_x[0], iter_x[1], iter_x[2] });
+  for (const auto& mp : msg->points) {
+    Point p;
+    p.x = mp.x;
+    p.y = mp.y;
+    last_tof_pieces_.emplace_back(p);
   }
-
-  // Update the frame ID.
-  tof_frame_id_ = msg->header.frame_id;
 }
 
 void ChessPlayerNode::game_state_callback_(const chess_msgs::msg::FullFEN::SharedPtr msg)
