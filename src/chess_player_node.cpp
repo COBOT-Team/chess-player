@@ -58,31 +58,10 @@ ChessPlayerNode::ChessPlayerNode(string nodename)
   tf_buffer = make_shared<tf2_ros::Buffer>(node->get_clock());
   tf_listener_ = make_shared<tf2_ros::TransformListener>(*tf_buffer);
 
-  // Init servo params.
-  // RCLCPP_INFO(get_logger(), "Init servo params");
-  // const auto servo_parameters = moveit_servo::ServoParameters::makeServoParameters(node);
-  // if (!servo_parameters) {
-  //   RCLCPP_FATAL(node->get_logger(), "Failed to load the servo parameters");
-  // }
-
-  // Init planning scene monitor.
-  // RCLCPP_INFO(get_logger(), "Init planning scene monitor");
-  // planning_scene_monitor::PlanningSceneMonitorPtr planning_scene_monitor;
-  // planning_scene_monitor =
-  //     std::make_shared<planning_scene_monitor::PlanningSceneMonitor>(node, "robot_description");
-  // if (!planning_scene_monitor->getPlanningScene()) {
-  //   RCLCPP_ERROR_STREAM(get_logger(), "Error in setting up the PlanningSceneMonitor.");
-  //   exit(EXIT_FAILURE);
-  // }
-  // planning_scene_monitor->providePlanningSceneService();
-  // planning_scene_monitor->startSceneMonitor();
-  // planning_scene_monitor->startWorldGeometryMonitor(
-  //     planning_scene_monitor::PlanningSceneMonitor::DEFAULT_COLLISION_OBJECT_TOPIC,
-  //     planning_scene_monitor::PlanningSceneMonitor::DEFAULT_PLANNING_SCENE_WORLD_TOPIC,
-  //     false /* skip octomap monitor */);
-  // planning_scene_monitor->startStateMonitor(servo_parameters->joint_topic);
-  // planning_scene_monitor->startPublishingPlanningScene(
-  //     planning_scene_monitor::PlanningSceneMonitor::UPDATE_SCENE);
+  // Setup chessboard transform clock.
+  chessboard_transform.header.frame_id = "";
+  cb_transform_timer_ = node->create_wall_timer(
+      500ms, std::bind(&ChessPlayerNode::cb_transform_timer_callback_, this));
 
   // Init publishers.
   RCLCPP_INFO(get_logger(), "Init publishers");
@@ -91,11 +70,6 @@ ChessPlayerNode::ChessPlayerNode(string nodename)
       node->create_publisher<chess_msgs::msg::CobotState>(prefix + params_->pub_topics.state, 10);
   servo_twist_cmd_pub = node->create_publisher<geometry_msgs::msg::TwistStamped>(
       prefix + "servo/delta_twist_cmds", 10);
-
-  // Init servo.
-  // servo = make_unique<moveit_servo::Servo>(node, servo_parameters, planning_scene_monitor_);
-  // servo->start();
-  // servo->setPaused(true);
 
   // Init callback groups.
   reentrant_cb_group_ = node->create_callback_group(rclcpp::CallbackGroupType::Reentrant);
@@ -317,4 +291,17 @@ void ChessPlayerNode::speed_callback_(const chess_msgs::msg::CobotSpeed::SharedP
 {
   max_speed_ = msg->speed;
   main_move_group->setMaxVelocityScalingFactor(max_speed_);
+}
+
+void ChessPlayerNode::cb_transform_timer_callback_()
+{
+  try {
+    const string chessboard_frame = get_params().frames.chessboard;
+    const string planning_frame = main_move_group->getPlanningFrame();
+    const auto transform =
+        tf_buffer->lookupTransform(planning_frame, chessboard_frame, tf2::TimePointZero);
+    chessboard_transform = transform;
+  } catch (tf2::ExtrapolationException&) {
+  } catch (tf2::LookupException&) {
+  }
 }

@@ -79,6 +79,9 @@ public:
   // Twist publisher for servoing.
   rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr servo_twist_cmd_pub;
 
+  // Transform between planning frame and chessboard frame.
+  geometry_msgs::msg::TransformStamped chessboard_transform;
+
   /**
    * Construct a new Chess Player Node object.
    */
@@ -197,6 +200,12 @@ private:
   void speed_callback_(const chess_msgs::msg::CobotSpeed::SharedPtr msg);
 
   /**
+   * Callback that is called periodically because to update the chessboard transform.
+   *
+   */
+  void cb_transform_timer_callback_();
+
+  /**
    * Query the action server for the best move.
    *
    * @return The result of the operation.
@@ -277,6 +286,7 @@ private:
   std::shared_ptr<rclcpp::Subscription<chess_msgs::msg::ChessTime>> time_sub_;
   std::shared_ptr<rclcpp::Subscription<chess_msgs::msg::CobotEnabled>> enabled_sub_;
   std::shared_ptr<rclcpp::Subscription<chess_msgs::msg::CobotSpeed>> speed_sub_;
+  rclcpp::TimerBase::SharedPtr cb_transform_timer_;
 };
 
 #endif

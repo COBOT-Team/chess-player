@@ -17,6 +17,38 @@ using moveit::planning_interface::MoveGroupInterfacePtr;
 //                                                                                                //
 
 /**
+ * Return the Z value of the chessboard in the planning frame.
+ *
+ * @param[in] chess_player The chess player node.
+ * @return The Z of the chessboard.
+ */
+double get_chessboard_z(ChessPlayerNode& chess_player)
+{
+  const auto pose = [] {
+    Pose p;
+    p.position.x = 0;
+    p.position.y = 0;
+    p.position.z = 0;
+    p.orientation.w = 1;
+
+    return p;
+  }();
+
+  // Transform the pose to the planning frame.
+  const Pose base_link_pose = [&] {
+    while (chess_player.chessboard_transform.header.frame_id.empty()) {
+      rclcpp::sleep_for(5ms);
+    }
+
+    Pose base_link_pose;
+    tf2::doTransform(pose, base_link_pose, chess_player.chessboard_transform);
+    return base_link_pose;
+  }();
+
+  return base_link_pose.position.z;
+}
+
+/**
  * Return the pose of the end effector over a square on the chessboard.
  *
  * @param[in] chess_player The chess player node.
@@ -40,7 +72,7 @@ Pose get_pose_over_square(ChessPlayerNode& chess_player, const libchess::Square&
     const int col = square.file();
 
     tf2::Quaternion q;
-    q.setRPY(0, M_PI, 0);
+    q.setRPY(0, M_PI, -M_PI * 0.167);
 
     Pose p;
     p.position.x = col_zero + col * square_size;
@@ -55,13 +87,12 @@ Pose get_pose_over_square(ChessPlayerNode& chess_player, const libchess::Square&
 
   // Transform the pose to the planning frame.
   const auto base_link_pose = [&] {
-    const string chessboard_frame = chess_player.get_params().frames.chessboard;
-    const string planning_frame = chess_player.main_move_group->getPlanningFrame();
-    const auto transform = chess_player.tf_buffer->lookupTransform(planning_frame, chessboard_frame,
-                                                                   tf2::TimePointZero);
+    while (chess_player.chessboard_transform.header.frame_id.empty()) {
+      rclcpp::sleep_for(5ms);
+    }
 
     Pose base_link_pose;
-    tf2::doTransform(pose, base_link_pose, transform);
+    tf2::doTransform(pose, base_link_pose, chess_player.chessboard_transform);
     return base_link_pose;
   }();
   RCLCPP_INFO(chess_player.get_logger(), "Pose relative to base link: (%0.4f, %0.4f, %0.4f)",
@@ -225,15 +256,19 @@ Result align_to_piece(ChessPlayerNode& chess_player)
   double error_x = 0;
   double error_y = 0;
   double error_z = 0;
+  double x_cmd = 0;
+  double y_cmd = 0;
+  double z_cmd = 0;
+  int print_it = 0;
   do {
     // Get current Z of gripper.
     const auto gripper_z = chess_player.main_move_group->getCurrentPose().pose.position.z;
 
     // Wait up to 50ms to get pieces.
-    this_thread::sleep_for(5ms);
+    rclcpp::sleep_for(20ms);
     for (int i = 0; i < 10; ++i) {
       if (!chess_player.tof_pieces().empty()) break;
-      this_thread::sleep_for(5ms);
+      rclcpp::sleep_for(5ms);
     }
     if (chess_player.tof_pieces().empty()) {
       RCLCPP_WARN(chess_player.get_logger(), "No pieces detected; not aligning");
@@ -277,13 +312,13 @@ Result align_to_piece(ChessPlayerNode& chess_player)
       error_y = nearest_piece.y;
       error_z = target_z - gripper_z;
 
-      double x_cmd = x_weight * error_x;
+      x_cmd = x_weight * error_x;
       if (x_cmd < -params.align_params.max_speed) x_cmd = -params.align_params.max_speed;
       if (x_cmd > params.align_params.max_speed) x_cmd = params.align_params.max_speed;
-      double y_cmd = -y_weight * error_y;
+      y_cmd = -y_weight * error_y;
       if (y_cmd < -params.align_params.max_speed) y_cmd = -params.align_params.max_speed;
       if (y_cmd > params.align_params.max_speed) y_cmd = params.align_params.max_speed;
-      double z_cmd = -z_weight * error_z;
+      z_cmd = -z_weight * error_z;
       if (z_cmd < -params.align_params.max_speed) z_cmd = -params.align_params.max_speed;
       if (z_cmd > params.align_params.max_speed) z_cmd = params.align_params.max_speed;
 
@@ -296,12 +331,18 @@ Result align_to_piece(ChessPlayerNode& chess_player)
 
       return msg;
     }();
-    RCLCPP_INFO(chess_player.get_logger(), "Error %0.5f, %0.5f, %0.5f", error_x, error_y, error_z);
+
+    if (print_it % 100 == 0)
+      RCLCPP_INFO(chess_player.get_logger(), "Error %0.5f, %0.5f, %0.5f\nCMD %0.5f, %0.5f, %0.5f",
+                  error_x, error_y, error_z, x_cmd, y_cmd, z_cmd);
+    ++print_it;
+
     chess_player.servo_twist_cmd_pub->publish(twist_cmd);
 
   } while (nearest_piece_dist > params.measurements.min_realign_dist || abs(error_z) > 0.005);
   RCLCPP_INFO(chess_player.get_logger(), "Aligned");
 
+  rclcpp::sleep_for(200ms);
   return Result::OK;
 }
 
@@ -314,6 +355,8 @@ Result align_to_piece(ChessPlayerNode& chess_player)
  */
 Result pick_up_piece(ChessPlayerNode& chess_player, const libchess::Square& square)
 {
+  const auto chessboard_z = get_chessboard_z(chess_player);
+
   // Open the gripper.
   {
     const auto result = move_to_named_pose(chess_player, chess_player.gripper_move_group, "open");
@@ -325,6 +368,7 @@ Result pick_up_piece(ChessPlayerNode& chess_player, const libchess::Square& squa
     const auto result = move_above_square(chess_player, square);
     if (result != Result::OK) return result;
   }
+
   // Align the cobot with the piece.
   {
     const auto result = align_to_piece(chess_player);
@@ -341,7 +385,7 @@ Result pick_up_piece(ChessPlayerNode& chess_player, const libchess::Square& squa
   // relative poses later.
   const auto pose_at_square = [&] {
     auto pose = chess_player.main_move_group->getCurrentPose().pose;
-    pose.position.z -= chess_player.get_params().measurements.hover_above_board;
+    pose.position.z = chessboard_z + chess_player.get_params().measurements.hover_above_board;
     return pose;
   }();
 
@@ -349,7 +393,7 @@ Result pick_up_piece(ChessPlayerNode& chess_player, const libchess::Square& squa
   {
     const auto down_pose = [&] {
       auto pose = pose_at_square;
-      pose.position.z += chess_player.get_params().measurements.min_grasp_height;
+      pose.position.z = chessboard_z + chess_player.get_params().measurements.min_grasp_height;
       return pose;
     }();
     // const auto result = move_to_pose_cartesian(chess_player, down_pose);
@@ -367,7 +411,7 @@ Result pick_up_piece(ChessPlayerNode& chess_player, const libchess::Square& squa
   {
     const auto up_pose = [&] {
       auto pose = pose_at_square;
-      pose.position.z += chess_player.get_params().measurements.hover_above_board;
+      pose.position.z = chessboard_z + chess_player.get_params().measurements.hover_above_board;
       return pose;
     }();
     // const auto result = move_to_pose_cartesian(chess_player, up_pose);
@@ -396,7 +440,7 @@ Result place_piece(ChessPlayerNode& chess_player, const libchess::Square& square
   // Calculate the pose at the center of the square, on the board surface.
   const auto pose_at_square = [&] {
     auto pose = chess_player.main_move_group->getCurrentPose().pose;
-    pose.position.z -= chess_player.get_params().measurements.hover_above_board;
+    pose.position.z = get_chessboard_z(chess_player);
     return pose;
   }();
 
@@ -404,7 +448,7 @@ Result place_piece(ChessPlayerNode& chess_player, const libchess::Square& square
   {
     const auto down_pose = [&] {
       auto pose = pose_at_square;
-      pose.position.z += chess_player.get_params().measurements.min_grasp_height + 0.0075;
+      pose.position.z += chess_player.get_params().measurements.min_grasp_height + 0.005;
       return pose;
     }();
     const auto result = move_to_pose_cartesian(chess_player, down_pose);
