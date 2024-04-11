@@ -261,8 +261,17 @@ Result align_to_piece(ChessPlayerNode& chess_player)
   double z_cmd = 0;
   int print_it = 0;
   do {
-    // Get current Z of gripper.
-    const auto gripper_z = chess_player.main_move_group->getCurrentPose().pose.position.z;
+    // Get current pose gripper.
+    const auto gripper_pose = chess_player.main_move_group->getCurrentPose().pose;
+    const auto gripper_z = gripper_pose.position.z;
+    const auto gripper_rot_zyx = [&] {
+      tf2::Quaternion tf2_quaternion;
+      tf2::fromMsg(gripper_pose.orientation, tf2_quaternion);
+      const tf2::Matrix3x3 mat(tf2_quaternion);
+      double y, p, r;
+      mat.getEulerYPR(y, p, r);
+      return make_tuple(y, p, r);
+    }();
 
     // Wait up to 50ms to get pieces.
     rclcpp::sleep_for(20ms);
@@ -295,6 +304,7 @@ Result align_to_piece(ChessPlayerNode& chess_player)
       const auto x_weight = params.align_params.x_weight;
       const auto y_weight = params.align_params.y_weight;
       const auto z_weight = params.align_params.z_weight;
+      const auto angular_weight = params.align_params.angular_weight;
       const auto z_min = params.measurements.hover_above_board + params.align_params.z_min;
       const auto z_max = params.measurements.hover_above_board + params.align_params.z_max;
       const auto z_scale_neutral_point = params.measurements.min_realign_dist * 10.0;
@@ -322,12 +332,35 @@ Result align_to_piece(ChessPlayerNode& chess_player)
       if (z_cmd < -params.align_params.max_speed) z_cmd = -params.align_params.max_speed;
       if (z_cmd > params.align_params.max_speed) z_cmd = params.align_params.max_speed;
 
+      double error_rot_x = 0.0 - get<2>(gripper_rot_zyx);
+      while (error_rot_x < -M_PI) error_rot_x += M_2_PI;
+      while (error_rot_x > M_PI) error_rot_x -= M_2_PI;
+      double error_rot_y = M_PI - get<1>(gripper_rot_zyx);
+      while (error_rot_y < -M_PI) error_rot_y += M_2_PI;
+      while (error_rot_y > M_PI) error_rot_y -= M_2_PI;
+      double error_rot_z = (-M_PI * 0.167) - get<0>(gripper_rot_zyx);
+      while (error_rot_z < -M_PI) error_rot_z += M_2_PI;
+      while (error_rot_z > M_PI) error_rot_z -= M_2_PI;
+
+      double rot_x_cmd = angular_weight * error_rot_x;
+      if (rot_x_cmd < -1) rot_x_cmd = -1;
+      if (rot_x_cmd > 1) rot_x_cmd = 1;
+      double rot_y_cmd = angular_weight * error_rot_y;
+      if (rot_y_cmd < -1) rot_y_cmd = -1;
+      if (rot_y_cmd > 1) rot_y_cmd = 1;
+      double rot_z_cmd = angular_weight * error_rot_z;
+      if (rot_z_cmd < -1) rot_z_cmd = -1;
+      if (rot_z_cmd > 1) rot_z_cmd = 1;
+
       geometry_msgs::msg::TwistStamped msg;
       msg.header.stamp = chess_player.node->now();
       msg.header.frame_id = "cobot0_link_5";
       msg.twist.linear.x = x_cmd;
       msg.twist.linear.y = y_cmd;
       msg.twist.linear.z = z_cmd;
+      msg.twist.angular.x = rot_x_cmd;
+      msg.twist.angular.y = rot_y_cmd;
+      msg.twist.angular.z = rot_z_cmd;
 
       return msg;
     }();

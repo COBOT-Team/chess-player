@@ -20,19 +20,25 @@ chess_player_params:
       {
         type: double,
         default_value: 0.01,
-        description: "The weight that translates X error (in meters) into X velocity",
+        description: "The weight that translates X error (in pixels) into X velocity",
       }
     y_weight:
       {
         type: double,
         default_value: 0.01,
-        description: "The weight that translates Y error (in meters) into Y velocity",
+        description: "The weight that translates Y error (in pixels) into Y velocity",
       }
     z_weight:
       {
         type: double,
         default_value: 50,
         description: "The weight that translates Z error (in meters) into Z velocity",
+      }
+    angular_weight:
+      {
+        type: double,
+        default_value: 1.2,
+        description: "The weight that translates angular error into angular velocity",
       }
     z_min:
       {
