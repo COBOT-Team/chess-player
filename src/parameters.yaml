@@ -43,7 +43,7 @@ chess_player_params:
     z_min:
       {
         type: double,
-        default_value: -0.04,
+        default_value: -0.02,
         description: "The minimum Z value of the gripper when aligning (relative to hover_above_board)."
       }
     z_max:
@@ -85,19 +85,19 @@ chess_player_params:
     chessboard_square_size:
       {
         type: double,
-        default_value: 0.04143,
+        default_value: 0.041375,
         description: "The size of each square on the chessboard in meters.",
       }
     hover_above_board:
       {
         type: double,
-        default_value: 0.34,
+        default_value: 0.31,
         description: "The height to hover above the board in meters.",
       }
     min_grasp_height:
       {
         type: double,
-        default_value: 0.22,
+        default_value: 0.21,
         description: "The minimum height for the gripper to go to in order to pick up a piece.",
       }
     pick_up_height:

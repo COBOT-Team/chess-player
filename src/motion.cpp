@@ -72,7 +72,7 @@ Pose get_pose_over_square(ChessPlayerNode& chess_player, const libchess::Square&
     const int col = square.file();
 
     tf2::Quaternion q;
-    q.setRPY(0, M_PI, -M_PI * 0.167);
+    q.setRPY(0, M_PI, -M_PI / 6);
 
     Pose p;
     p.position.x = col_zero + col * square_size;
@@ -273,11 +273,11 @@ Result align_to_piece(ChessPlayerNode& chess_player)
       return make_tuple(y, p, r);
     }();
 
-    // Wait up to 50ms to get pieces.
+    // Wait up to 45ms to get pieces.
     rclcpp::sleep_for(20ms);
-    for (int i = 0; i < 10; ++i) {
+    for (int i = 0; i < 25; ++i) {
       if (!chess_player.tof_pieces().empty()) break;
-      rclcpp::sleep_for(5ms);
+      rclcpp::sleep_for(1ms);
     }
     if (chess_player.tof_pieces().empty()) {
       RCLCPP_WARN(chess_player.get_logger(), "No pieces detected; not aligning");
@@ -318,8 +318,8 @@ Result align_to_piece(ChessPlayerNode& chess_player)
       if (target_z < z_min) target_z = z_min;
       if (target_z > z_max) target_z = z_max;
 
-      error_x = nearest_piece.x;
-      error_y = nearest_piece.y;
+      error_x = nearest_piece.y;
+      error_y = -nearest_piece.x;
       error_z = target_z - gripper_z;
 
       x_cmd = x_weight * error_x;
@@ -358,9 +358,9 @@ Result align_to_piece(ChessPlayerNode& chess_player)
       msg.twist.linear.x = x_cmd;
       msg.twist.linear.y = y_cmd;
       msg.twist.linear.z = z_cmd;
-      msg.twist.angular.x = rot_x_cmd;
-      msg.twist.angular.y = rot_y_cmd;
-      msg.twist.angular.z = rot_z_cmd;
+      // msg.twist.angular.x = rot_x_cmd;
+      // msg.twist.angular.y = rot_y_cmd;
+      // msg.twist.angular.z = rot_z_cmd;
 
       return msg;
     }();
@@ -484,7 +484,7 @@ Result place_piece(ChessPlayerNode& chess_player, const libchess::Square& square
       pose.position.z += chess_player.get_params().measurements.min_grasp_height + 0.005;
       return pose;
     }();
-    const auto result = move_to_pose_cartesian(chess_player, down_pose);
+    const auto result = move_to_pose(chess_player, down_pose);
     if (result != Result::OK) return result;
   }
 
@@ -501,7 +501,7 @@ Result place_piece(ChessPlayerNode& chess_player, const libchess::Square& square
       pose.position.z += chess_player.get_params().measurements.hover_above_board;
       return pose;
     }();
-    const auto result = move_to_pose_cartesian(chess_player, up_pose);
+    const auto result = move_to_pose(chess_player, up_pose);
     if (result != Result::OK) return result;
   }
 

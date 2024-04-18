@@ -1,5 +1,6 @@
 #include <chrono>
 #include <rclcpp/rclcpp.hpp>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
 #include "chess_player/chess_player_node.hpp"
 
@@ -7,6 +8,7 @@ using namespace std;
 using chess_msgs::action::FindBestMove;
 using libchess::Side;
 using namespace std::chrono_literals;
+using geometry_msgs::msg::Pose;
 
 Result ChessPlayerNode::find_best_move_()
 {
@@ -67,6 +69,48 @@ bool ChessPlayerNode::take_turn_()
     RCLCPP_WARN(get_logger(), "Attempted to make move while already making move");
     return true;
   }
+
+#if 0
+
+  const auto pose = [&]{
+    tf2::Quaternion q;
+    q.setRPY(0, M_PI, -M_PI / 6);
+
+    Pose p;
+    // p.position.x = -0.01 + 0.0;
+    p.position.x = -0.15;
+    // p.position.y = 0.0125 - 0.15;
+    p.position.y = 0.15;
+    p.position.z = 245.0/1000.0;
+    p.orientation = tf2::toMsg(q);
+
+    return p;
+  }();
+  main_move_group->setPoseTarget(pose);
+  const auto [success, plan] = [&] {
+    moveit::planning_interface::MoveGroupInterface::Plan plan;
+    const auto ok = static_cast<bool>(main_move_group->plan(plan));
+    return make_pair(ok, plan);
+  }();
+  if (!success) {
+    RCLCPP_ERROR(node->get_logger(), "Failed to plan motion");
+    return true;
+  }
+
+  RCLCPP_INFO(get_logger(), "EXECUTING");
+  const auto execute_result = main_move_group->execute(plan);
+  switch (execute_result.val) {
+    case moveit::core::MoveItErrorCode::SUCCESS:
+    case moveit::core::MoveItErrorCode::TIMED_OUT:
+      return true;
+    default:
+      RCLCPP_ERROR(node->get_logger(), "Failed to execute motion");
+      return true;
+  }
+
+  return true;
+
+#endif
 
   // Find the best move.
   for (auto result = find_best_move_(); result != Result::OK; result = find_best_move_()) {
