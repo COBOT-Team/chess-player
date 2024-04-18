@@ -78,9 +78,9 @@ bool ChessPlayerNode::take_turn_()
 
     Pose p;
     // p.position.x = -0.01 + 0.0;
-    p.position.x = -0.15;
+    p.position.x = 0.0;
     // p.position.y = 0.0125 - 0.15;
-    p.position.y = 0.15;
+    p.position.y = 0.0;
     p.position.z = 245.0/1000.0;
     p.orientation = tf2::toMsg(q);
 
@@ -231,5 +231,6 @@ bool ChessPlayerNode::take_turn_()
   }();
   if (!move_home_result) return false;
 
+  set_state(State::WAITING_FOR_TURN);
   return true;
 }
