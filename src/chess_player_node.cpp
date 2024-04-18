@@ -44,6 +44,7 @@ ChessPlayerNode::ChessPlayerNode(string nodename)
     RCLCPP_ERROR(node->get_logger(), "Invalid cobot color: %s", params_->cobot_color.c_str());
     throw runtime_error("Invalid cobot color");
   }
+  clock_btn_pressed = false;
 
   // Init move groups.
   main_move_group = make_shared<MoveGroupInterface>(node, params_->move_groups.cobot);
@@ -94,6 +95,9 @@ ChessPlayerNode::ChessPlayerNode(string nodename)
       reentrant_options);
   speed_sub_ = node->create_subscription<chess_msgs::msg::CobotSpeed>(
       prefix + params_->sub_topics.max_speed, 10, bind(&ChessPlayerNode::speed_callback_, this, _1),
+      reentrant_options);
+  clock_btns_sub_ = node->create_subscription<chess_msgs::msg::ClockButtons>(
+      "chess/clock_buttons", 10, bind(&ChessPlayerNode::clock_buttons_callback_, this, _1),
       reentrant_options);
 
   // Set up state.
@@ -304,4 +308,10 @@ void ChessPlayerNode::cb_transform_timer_callback_()
   } catch (tf2::ExtrapolationException&) {
   } catch (tf2::LookupException&) {
   }
+}
+
+void ChessPlayerNode::clock_buttons_callback_(const chess_msgs::msg::ClockButtons::SharedPtr msg)
+{
+  clock_btn_pressed = (msg->white_pressed && cobot_color == Side::White) ||
+                      (msg->black_pressed && cobot_color == Side::Black);
 }

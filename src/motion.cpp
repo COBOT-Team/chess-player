@@ -633,10 +633,19 @@ Result ChessPlayerNode::hit_clock_()
     return Result::ERR_FATAL;
   }
 
-  // Press the clock.
+  // Servo down in the Z direction until the clock is pressed.
   {
-    const auto result = move_to_named_pose(*this, main_move_group, "press_clock");
-    if (result != Result::OK) return result;
+    const auto twist_cmd = [&] {
+      geometry_msgs::msg::TwistStamped msg;
+      msg.header.stamp = node->now();
+      msg.header.frame_id = "cobot0_link_5";
+      msg.twist.linear.z = -0.2;
+      return msg;
+    }();
+    while (!clock_btn_pressed) {
+      servo_twist_cmd_pub->publish(twist_cmd);
+      rclcpp::sleep_for(25ms);
+    }
   }
 
   // Make sure the cobot isn't disabled.

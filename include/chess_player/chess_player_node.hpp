@@ -11,6 +11,7 @@
 #include <chess_msgs/msg/camera_points.hpp>
 #include <chess_msgs/msg/chess_move_uci.hpp>
 #include <chess_msgs/msg/chess_time.hpp>
+#include <chess_msgs/msg/clock_buttons.hpp>
 #include <chess_msgs/msg/cobot_enabled.hpp>
 #include <chess_msgs/msg/cobot_speed.hpp>
 #include <chess_msgs/msg/cobot_state.hpp>
@@ -59,6 +60,7 @@ public:
   rclcpp::Node::SharedPtr node;             // The ROS 2 node for the chess player.
   libchess::Side cobot_color;               // The color that the cobot is playing as.
   chess_msgs::msg::ChessMoveUCI best_move;  // The best move found by the chess engine.
+  bool clock_btn_pressed;                   // True if this cobot's clock button is pressed.
   std::mutex make_move_mutex;               // Mutex for planning and making a move.
 
   // The move group for the arm of the cobot.
@@ -200,6 +202,13 @@ private:
   void speed_callback_(const chess_msgs::msg::CobotSpeed::SharedPtr msg);
 
   /**
+   * Callback that is called for updates to the clock buttons.
+   *
+   * @param[in] msg The message containing the clock buttons.
+   */
+  void clock_btns_callback_(const chess_msgs::msg::ClockButtons::SharedPtr msg);
+
+  /**
    * Callback that is called periodically because to update the chessboard transform.
    *
    */
@@ -286,6 +295,7 @@ private:
   std::shared_ptr<rclcpp::Subscription<chess_msgs::msg::ChessTime>> time_sub_;
   std::shared_ptr<rclcpp::Subscription<chess_msgs::msg::CobotEnabled>> enabled_sub_;
   std::shared_ptr<rclcpp::Subscription<chess_msgs::msg::CobotSpeed>> speed_sub_;
+  std::shared_ptr<rclcpp::Subscription<chess_msgs::msg::ClockButtons>> clock_btns_sub_;
   rclcpp::TimerBase::SharedPtr cb_transform_timer_;
 };
 
