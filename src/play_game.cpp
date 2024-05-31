@@ -55,7 +55,7 @@ Result ChessPlayerNode::find_best_move_()
                             move.move.c_str());
   best_move = move;
 
-  this_thread::sleep_for(5000ms);
+  this_thread::sleep_for(500ms);
 
   return Result::OK;
 }
@@ -230,6 +230,46 @@ bool ChessPlayerNode::take_turn_()
     }
   }();
   if (!move_home_result) return false;
+
+  // Move to home.
+  set_state(ChessPlayerNode::State::MOVING_TO_HOME);
+  const auto move_home_result1 = [this] {
+    while (1) {
+      const auto result = move_home_();
+      switch (result) {
+        case Result::OK:
+          return true;
+        case Result::ERR_RETRY:
+          RCLCPP_WARN(get_logger(), "Failed to move to home, retrying in 100ms");
+          this_thread::sleep_for(100ms);
+          continue;
+        case Result::ERR_FATAL:
+          RCLCPP_ERROR(get_logger(), "Failed to move to home, exiting");
+          return false;
+      }
+    }
+  }();
+  if (!move_home_result1) return false;
+
+  // Move to home.
+  set_state(ChessPlayerNode::State::MOVING_TO_HOME);
+  const auto move_home_result2 = [this] {
+    while (1) {
+      const auto result = move_home_();
+      switch (result) {
+        case Result::OK:
+          return true;
+        case Result::ERR_RETRY:
+          RCLCPP_WARN(get_logger(), "Failed to move to home, retrying in 100ms");
+          this_thread::sleep_for(100ms);
+          continue;
+        case Result::ERR_FATAL:
+          RCLCPP_ERROR(get_logger(), "Failed to move to home, exiting");
+          return false;
+      }
+    }
+  }();
+  if (!move_home_result2) return false;
 
   set_state(State::WAITING_FOR_TURN);
   return true;

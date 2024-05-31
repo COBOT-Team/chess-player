@@ -97,7 +97,7 @@ ChessPlayerNode::ChessPlayerNode(string nodename)
       prefix + params_->sub_topics.max_speed, 10, bind(&ChessPlayerNode::speed_callback_, this, _1),
       reentrant_options);
   clock_btns_sub_ = node->create_subscription<chess_msgs::msg::ClockButtons>(
-      "chess/clock_buttons", 10, bind(&ChessPlayerNode::clock_buttons_callback_, this, _1),
+      "chess/clock_buttons", 10, bind(&ChessPlayerNode::clock_btns_callback_, this, _1),
       reentrant_options);
 
   // Set up state.
@@ -310,7 +310,7 @@ void ChessPlayerNode::cb_transform_timer_callback_()
   }
 }
 
-void ChessPlayerNode::clock_buttons_callback_(const chess_msgs::msg::ClockButtons::SharedPtr msg)
+void ChessPlayerNode::clock_btns_callback_(const chess_msgs::msg::ClockButtons::SharedPtr msg)
 {
   clock_btn_pressed = (msg->white_pressed && cobot_color == Side::White) ||
                       (msg->black_pressed && cobot_color == Side::Black);

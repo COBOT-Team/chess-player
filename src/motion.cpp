@@ -110,46 +110,50 @@ Pose get_pose_over_square(ChessPlayerNode& chess_player, const libchess::Square&
  */
 Result move_to_pose(ChessPlayerNode& chess_player, const Pose& pose)
 {
-  // Make sure the cobot isn't disabled.
-  if (chess_player.get_state() == ChessPlayerNode::State::DISABLED) {
-    RCLCPP_ERROR(chess_player.node->get_logger(), "Cobot was disabled; not planning motion");
-    return Result::ERR_FATAL;
-  }
-
-  // Set the pose target.
-  if (!chess_player.main_move_group->setPoseTarget(pose)) {
-    RCLCPP_ERROR(chess_player.node->get_logger(), "Failed to set pose target");
-    return Result::ERR_RETRY;
-  }
-
-  // Plan the motion.
-  const auto [success, plan] = [&] {
-    moveit::planning_interface::MoveGroupInterface::Plan plan;
-    const auto ok = static_cast<bool>(chess_player.main_move_group->plan(plan));
-    return make_pair(ok, plan);
-  }();
-  if (!success) {
-    RCLCPP_ERROR(chess_player.node->get_logger(), "Failed to plan motion");
-    return Result::ERR_FATAL;
-  }
-
-  // Make sure the cobot wasn't disabled during motion planning.
-  if (chess_player.get_state() == ChessPlayerNode::State::DISABLED) {
-    RCLCPP_ERROR(chess_player.node->get_logger(), "Cobot was disabled; discarding planned motion");
-    return Result::ERR_FATAL;
-  }
-
-  // Execute the motion.
-  RCLCPP_INFO(chess_player.get_logger(), "EXECUTING");
-  const auto execute_result = chess_player.main_move_group->execute(plan);
-  switch (execute_result.val) {
-    case moveit::core::MoveItErrorCode::SUCCESS:
-    case moveit::core::MoveItErrorCode::TIMED_OUT:
-      return Result::OK;
-    default:
-      RCLCPP_ERROR(chess_player.node->get_logger(), "Failed to execute motion");
+  for (size_t i = 0; i < 2; ++i) {
+    // Make sure the cobot isn't disabled.
+    if (chess_player.get_state() == ChessPlayerNode::State::DISABLED) {
+      RCLCPP_ERROR(chess_player.node->get_logger(), "Cobot was disabled; not planning motion");
       return Result::ERR_FATAL;
+    }
+
+    // Set the pose target.
+    if (!chess_player.main_move_group->setPoseTarget(pose)) {
+      RCLCPP_ERROR(chess_player.node->get_logger(), "Failed to set pose target");
+      return Result::ERR_RETRY;
+    }
+
+    // Plan the motion.
+    const auto [success, plan] = [&] {
+      moveit::planning_interface::MoveGroupInterface::Plan plan;
+      const auto ok = static_cast<bool>(chess_player.main_move_group->plan(plan));
+      return make_pair(ok, plan);
+    }();
+    if (!success) {
+      RCLCPP_ERROR(chess_player.node->get_logger(), "Failed to plan motion");
+      return Result::ERR_FATAL;
+    }
+
+    // Make sure the cobot wasn't disabled during motion planning.
+    if (chess_player.get_state() == ChessPlayerNode::State::DISABLED) {
+      RCLCPP_ERROR(chess_player.node->get_logger(), "Cobot was disabled; discarding planned "
+                                                    "motion");
+      return Result::ERR_FATAL;
+    }
+
+    // Execute the motion.
+    RCLCPP_INFO(chess_player.get_logger(), "EXECUTING");
+    const auto execute_result = chess_player.main_move_group->execute(plan);
+    switch (execute_result.val) {
+      case moveit::core::MoveItErrorCode::SUCCESS:
+      case moveit::core::MoveItErrorCode::TIMED_OUT:
+        continue;
+      default:
+        RCLCPP_ERROR(chess_player.node->get_logger(), "Failed to execute motion");
+        return Result::ERR_FATAL;
+    }
   }
+  return Result::OK;
 }
 
 /**
@@ -635,14 +639,14 @@ Result ChessPlayerNode::hit_clock_()
 
   // Servo down in the Z direction until the clock is pressed.
   {
-    const auto twist_cmd = [&] {
-      geometry_msgs::msg::TwistStamped msg;
-      msg.header.stamp = node->now();
-      msg.header.frame_id = "cobot0_link_5";
-      msg.twist.linear.z = -0.2;
-      return msg;
-    }();
     while (!clock_btn_pressed) {
+      const auto twist_cmd = [&] {
+        geometry_msgs::msg::TwistStamped msg;
+        msg.header.stamp = node->now();
+        msg.header.frame_id = "cobot0_link_5";
+        msg.twist.linear.z = 0.2;
+        return msg;
+      }();
       servo_twist_cmd_pub->publish(twist_cmd);
       rclcpp::sleep_for(25ms);
     }
