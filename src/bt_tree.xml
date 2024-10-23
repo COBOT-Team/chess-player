@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<root main_tree_to_execute="MainTree">
+    <BehaviorTree ID="MainTree">
+
+        <!-- Sequence for a complete chess turn -->
+        <Sequence name="ChessTurn">
+
+            <!-- Setup for turn -->
+            <TurnSetupAction name="Turn Setup"/>
+
+            <!-- Find the best move -->
+            <FindBestMoveAction name="Find Best Move"/>
+
+            <!-- Parse the move -->
+            <ParseMoveAction name="Parse Move">
+                <InputPort name="move" value="{best_move}" />
+            </ParseMoveAction>
+
+            <!-- Capture a piece if necessary -->
+            <CapturePieceAction name="Capture Piece">
+                <InputPort name="parsed_move" value="{parsed_move}" />
+            </CapturePieceAction>
+
+            <!-- Move the piece -->
+            <MovePieceAction name="Move Piece">
+                <InputPort name="parsed_move" value="{parsed_move}" />
+            </MovePieceAction>
+
+            <!-- Hit the chess clock -->
+            <HitClockAction name="Hit Clock"/>
+
+            <!-- Move robot arm back to home position -->
+            <MoveHomeAction name="Move Home"/>
+
+        </Sequence>
+    </BehaviorTree>
+</root>
