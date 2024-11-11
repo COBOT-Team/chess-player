@@ -8,16 +8,21 @@
 // Custom BT node to set up the bot for its turn 
 class TurnSetupAction : public BT::SyncActionNode {
 public:
-    TurnSetupAction(const std::string& name, const BT::NodeConfiguration& config)
-        : BT::SyncActionNode(name, config) {}
+    TurnSetupAction(const std::string& name, const BT::NodeConfiguration& config, ChessPlayerNode* chess_node)
+        : BT::SyncActionNode(name, config), chess_node_(chess_node) {}
 
     BT::NodeStatus tick() override {
+        chess_node_ -> game_state_callback_(latest_game_state_)
         if (turn_setup()) { // Just call the existing function
             return BT::NodeStatus::SUCCESS;
         } else {
             return BT::NodeStatus::FAILURE;
         }
     }
+private: 
+    ChessPlayerNode* chess_node_; 
+    chess_msgs::msg::FullFEN::SharedPtr latest_game_state_;
+    latest_game_state_ -> get_state();
 };
 
 // Custom BT node to find the best move

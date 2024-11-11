@@ -76,7 +76,10 @@ class ChessPlayerNode : public rclcpp:Node{
         void init_behavior_tree_(){
             using namespace BT; 
 
-            BehaviorTreeFactory factory;  
+            BehaviorTreeFactory factory; 
+
+            ChessPlayerNode* chess_node = new ChessPlayerNode("chess_player_node");  
+            auto turn_setup_action = std::make_shared<TurnSetupAction>("TurnSetup", BT::NodeConfiguration{}, chess_node);
 
             factory.registerNodeType<TurnSetupAction>("TurnSetup");
             factory.registerNodeType<FindBestMoveAction>("FindBestMove");
