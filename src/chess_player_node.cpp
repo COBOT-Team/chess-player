@@ -113,6 +113,7 @@ rclcpp::Logger ChessPlayerNode::get_logger() const
   return node->get_logger();
 }
 
+
 void ChessPlayerNode::set_state(State state)
 {
   cobot_state_ = state;

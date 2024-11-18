@@ -154,6 +154,7 @@ class ChessPlayerNode : public rclcpp:Node{
             BT::NodeStatus status = behavior_tree_.tickRoot();
             if (status == BT::NodeStatus::SUCCESS) {
                 RCLCPP_INFO(this->get_logger(), "Turn completed successfully.");
+                RCLCPP_INFO(this->get_logger(), "Current FEN: %s", get_position().get_fen().c_str());//log current game staate
             } else {
                 RCLCPP_ERROR(this->get_logger(), "Turn failed.");
             }

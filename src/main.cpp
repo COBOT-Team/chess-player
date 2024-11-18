@@ -22,6 +22,9 @@ int main(int argc, char** argv)
     // Create the ChessPlayerNode
     auto chess_player_node = std::make_shared<ChessPlayerNode>();
 
+    //reset game 
+    chess_player_node-> set_state(State::WAITING_FOR_GAME);
+    
     // Initialize the behavior tree
     chess_player_node->init_behavior_tree();
 
