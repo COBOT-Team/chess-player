@@ -89,10 +89,15 @@ class ChessPlayerNode : public rclcpp:Node{
             factory.registerNodeType<HitClockAction>("HitClock");
             factory.registerNodeType<MoveHomeAction>("MoveHome");
 
-
+            //making a change here: verifying that the tree loads correctly to start
+            try{
             auto tree = factory.createTreeFromFile("bt_tree.xml"); 
-
             behavior_tree_ = std::move(tree); 
+            RCLCPP_INFO(this->get_logger(), "behavior tree initialized successful"); 
+            } 
+            catch(const std::exception& e){
+            RCLCPP_ERROR(this->get_logger(), "failed to initialize behavior tree %s", e.what()); 
+            }
         }
 
         void turn_setup(){
@@ -155,7 +160,7 @@ class ChessPlayerNode : public rclcpp:Node{
             if (status == BT::NodeStatus::SUCCESS) {
                 RCLCPP_INFO(this->get_logger(), "Turn completed successfully.");
                 RCLCPP_INFO(this->get_logger(), "Current FEN: %s", get_position().get_fen().c_str());//log current game staate
-            } else {
+            } else if{
                 RCLCPP_ERROR(this->get_logger(), "Turn failed.");
             }
         }

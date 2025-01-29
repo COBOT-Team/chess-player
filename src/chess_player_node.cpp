@@ -285,7 +285,7 @@ void ChessPlayerNode::enabled_callback_(const chess_msgs::msg::CobotEnabled::Sha
       set_state(State::WAITING_FOR_GAME);
   } else {
     main_move_group->stop();
-    gripper_move_group->stop();
+    gripper_move_group->stop());
     set_state(State::DISABLED);
     // this_thread::sleep_for(100ms);
     move_out_of_way_();

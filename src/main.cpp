@@ -22,8 +22,6 @@ int main(int argc, char** argv)
     // Create the ChessPlayerNode
     auto chess_player_node = std::make_shared<ChessPlayerNode>();
 
-    //reset game 
-    chess_player_node-> set_state(State::WAITING_FOR_GAME);
     
     // Initialize the behavior tree
     chess_player_node->init_behavior_tree();
@@ -34,10 +32,13 @@ int main(int argc, char** argv)
     // Spin the node, handling callbacks
     RCLCPP_INFO(rclcpp::get_logger("main"), "Starting Chess Player node...");
 
+    //reset game 
+    chess_player_node-> set_state(State::WAITING_FOR_GAME);
+
     // Main execution loop for the node
     while (rclcpp::ok()) {
         // Tick the behavior tree (this is where the decision-making happens)
-        chess_player_node->take_turn();
+        chess_player_node->take_turn_();
 
         // Spin the executor (process any incoming messages, services, or actions)
         executor.spin_once();
